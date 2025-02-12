@@ -1,0 +1,25 @@
+.{
+    .name = "circular",
+    .version = "0.0.0",
+
+    .dependencies = .{
+        .libffmpeg = .{
+            .url = "git+https://github.com/7phs/ffmpeg.git#a679ac6f297e5b98612734c78eb3bbdca9d994b1",
+            .hash = "1220e70bd38061f2db93d6cba7c88461784a97f37bb2c8a17acbb7b1595145da9165",
+        },
+        .zglfw = .{
+            .url = "git+https://github.com/zig-gamedev/zglfw.git#e9bd486903b5904b6d4e27b8b3771b138a667ef1",
+            .hash = "12209fb981e7aab58c2f9062ab526bd43df3d7953aa41e131a173c37ad35d10b1132",
+        },
+        .zopengl = .{
+            .url = "git+https://github.com/zig-gamedev/zopengl.git#8686d6f2881322ec3b985ca68c7caee1cabe273b",
+            .hash = "1220214a9591f6f2a15ac3e53810c3a593e868fa3ee17f0809c3420444e462c9b40f",
+        },
+        .system_sdk = .{
+            .url = "git+https://github.com/zig-gamedev/system_sdk.git#d1e724748d15cfcbf50c45ec7c7019688d45b16a",
+            .hash = "122047a9298c4c9dd43389d418d6826d469b192246ba0944102964cdc57f94c562df",
+        },
+    },
+
+    .paths = .{"build.zig", "build.zig.zon", "src"},
+}
