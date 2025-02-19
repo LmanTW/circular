@@ -1,11 +1,15 @@
 const gl = @import("gl").bindings;
 const std = @import("std");
 
+const OpenGLTexture = @import("./Texture.zig");
 const Surface = @import("../../Surface.zig");
+const Texture = @import("../../Texture.zig");
 const Color = @import("../../Color.zig");
 const context = @import("./context.zig");
 
 const OpenGLSurface = @This();
+
+allocator: std.mem.Allocator,
 
 width: u16,
 height: u16,
@@ -13,8 +17,21 @@ height: u16,
 buffer: gl.Uint,
 texture: gl.Uint,
 
+// The vtable.
+pub const VTable = Surface.VTable{
+    .deinit = deinit,
+
+    .clear = clear,
+    .fill = fill,
+
+    .loadTexture = loadTexture,
+    .drawTexture = drawTexture,
+
+    .read = read
+};
+
 // Initialize a surface.
-pub fn init(width: u16, height: u16) !OpenGLSurface {
+pub fn init(width: u16, height: u16, allocator: std.mem.Allocator) !OpenGLSurface {
     try context.init();
 
     var buffer = @as(gl.Uint, undefined);
@@ -30,6 +47,8 @@ pub fn init(width: u16, height: u16) !OpenGLSurface {
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
 
     return OpenGLSurface{
+        .allocator = allocator,
+
         .width = width,
         .height = height,
 
@@ -39,22 +58,28 @@ pub fn init(width: u16, height: u16) !OpenGLSurface {
 }
 
 // Deinitialize the surface.
-pub fn deinit(self: *OpenGLSurface) void {
-    gl.deleteFramebuffers(1, @as([*]c_uint, @ptrCast(&self.buffer)));
-    gl.deleteTextures(1, @as([*]c_uint, @ptrCast(&self.texture)));
+pub fn deinit(ptr: *anyopaque) void {
+    const self = @as(*OpenGLSurface, @ptrCast(@alignCast(ptr)));
+
+    gl.deleteFramebuffers(1, @as([*]gl.Uint, @ptrCast(&self.buffer)));
+    gl.deleteTextures(1, @as([*]gl.Uint, @ptrCast(&self.texture)));
 
     context.deinit();
 }
 
 // Clear the surface.
-pub fn clear(self: *OpenGLSurface) void {
+pub fn clear(ptr: *anyopaque) !void {
+    const self = @as(*OpenGLSurface, @ptrCast(@alignCast(ptr)));
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, self.buffer);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 }
 
 // Fill the surface.
-pub fn fill(self: *OpenGLSurface, color: Color) void {
+pub fn fill(ptr: *anyopaque, color: Color) !void {
+    const self = @as(*OpenGLSurface, @ptrCast(@alignCast(ptr)));
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, self.buffer);
     gl.clearColor(
         @as(gl.Float, @floatFromInt(color.r)) / 255,
@@ -65,8 +90,26 @@ pub fn fill(self: *OpenGLSurface, color: Color) void {
     gl.clear(gl.COLOR_BUFFER_BIT);
 }
 
+// Load a texture.
+pub fn loadTexture(ptr: *anyopaque, buffer: []u8) !Texture {
+    const self = @as(*OpenGLSurface, @ptrCast(@alignCast(ptr)));
+
+    return OpenGLTexture.init(buffer, self.allocator);
+}
+
+// Draw a texture.
+pub fn drawTexture(_: *anyopaque, _: i17, _: i17, _: u16, _: u16, texture: Texture) !void {
+    if (texture.backend != .OpenGL) {
+        return error.BackendMismatch;
+    }
+
+    // const self = @as(*OpenGLSurface, @ptrCast(@alignCast(ptr)));
+}
+
 // Read the surface.
-pub fn read(self: *OpenGLSurface, format: Surface.Format, buffer: []u8) !void {
+pub fn read(ptr: *anyopaque, format: Surface.Format, buffer: []u8) !void {
+    const self = @as(*OpenGLSurface, @ptrCast(@alignCast(ptr)));
+
     const length = switch (format) {
         .RGB => (@as(u64, @intCast(self.width)) * self.height) * 3,
         .RGBA => (@as(u64, @intCast(self.width)) * self.height) * 4        

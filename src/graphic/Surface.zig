@@ -1,71 +1,114 @@
+const options = @import("options");
 const std = @import("std");
 
-const OpenGLSurface = @import("./backends/opengl/Surface.zig");
-const BasicSurface = @import("./backends/basic/Surface.zig");
+const OpenGLSurface = if (options.backend_opengl) @import("./backends/opengl/Surface.zig") else struct {};
+const BasicSurface = if (options.backend_basic) @import("./backends/basic/Surface.zig") else struct {};
+const Texture = @import("./Texture.zig");
 const Color = @import("./Color.zig");
 
 const Surface = @This();
 
+allocator: std.mem.Allocator,
+unmanaged: *anyopaque,
+
 width: u16,
 height: u16,
 
-allocator: std.mem.Allocator,
-backend: union(Backend) {
-    Basic: BasicSurface,
-    OpenGL: OpenGLSurface
-},
+backend: Backend,
+vtable: *const VTable,
+
+// The vtable.
+pub const VTable = struct {
+    deinit: *const fn(ptr: *anyopaque) void,
+
+    clear: *const fn(ptr: *anyopaque) anyerror!void,
+    fill: *const fn(ptr: *anyopaque, color: Color) anyerror!void,
+
+    loadTexture: *const fn(ptr: *anyopaque, buffer: []u8) anyerror!Texture,
+    drawTexture: *const fn(ptr: *anyopaque, x: i17, y: i17, width: u16, height: u16, texture: Texture) anyerror!void,
+    
+    read: *const fn(ptr: *anyopaque, format: Format, buffer: []u8) anyerror!void
+};
+
+// Initialize a surface.
+pub fn init(backend: Backend, width: u16, height: u16, threads: u8, allocator: std.mem.Allocator) !Surface {
+    switch (backend) {
+        .Basic => { 
+            if (!comptime options.backend_basic) {
+                return error.BackendNotAvialiable;
+            }
+
+            const unmanaged = try allocator.create(BasicSurface);
+            errdefer allocator.destroy(unmanaged);
+
+            unmanaged.* = try BasicSurface.init(width, height, threads, allocator);
+
+            return Surface{
+                .allocator = allocator,
+                .unmanaged = unmanaged,
+
+                .width = width,
+                .height = height,
+
+                .backend = backend,
+                .vtable = &BasicSurface.VTable
+            };
+        },
+
+        .OpenGL => {
+            if (!comptime options.backend_opengl) {
+                return error.BackendNotAvialiable;
+            }
+
+            const unmanaged = try allocator.create(OpenGLSurface);
+            errdefer allocator.destroy(unmanaged);
+
+            unmanaged.* = try OpenGLSurface.init(width, height, allocator);
+
+            return Surface{
+                .allocator = allocator,
+                .unmanaged = unmanaged,
+
+                .width = width,
+                .height = height,
+
+                .backend = backend,
+                .vtable = &OpenGLSurface.VTable
+            };
+        }
+    }
+}
+
+// Deinitialize the surface.
+pub fn deinit(self: *Surface) void {
+    self.vtable.deinit(self.unmanaged);
+
+    switch (self.backend) {
+        .Basic => self.allocator.destroy(@as(*BasicSurface, @ptrCast(@alignCast(self.unmanaged)))),
+        .OpenGL => self.allocator.destroy(@as(*OpenGLSurface, @ptrCast(@alignCast(self.unmanaged))))
+    }
+}
+
+// Clear the surface.
+pub fn clear(self: *Surface) void {
+    self.vtable.clear(self.unmanaged);
+}
+
+// Fill the surface.
+pub fn fill(self: *Surface, color: Color) void {
+    self.vtable.clear(self.unmanaged, color);
+}
+
+// Read the surface.
+pub fn read(self: *Surface, format: Format, buffer: []u8) !void {
+    try self.vtable.read(self.unmanaged, format, buffer);
+}
 
 // The backend.
 pub const Backend = enum(u4) {
     Basic,
     OpenGL
 };
-
-// Initialize a surface.
-pub fn init(backend: Backend, width: u16, height: u16, threads: u8, allocator: std.mem.Allocator) !Surface {
-    return Surface{
-        .width = width,
-        .height = height,
-
-        .allocator = allocator,
-        .backend = switch (backend) {
-            .Basic => .{ .Basic = try BasicSurface.init(width, height, threads, allocator) },
-            .OpenGL => .{ .OpenGL = try OpenGLSurface.init(width, height) }
-        }
-    };
-}
-
-// Deinitialize the surface.
-pub fn deinit(self: *Surface) void {
-    switch (self.backend) {
-        .Basic => |surface| @constCast(&surface).deinit(),
-        .OpenGL => |surface| @constCast(&surface).deinit()
-    }
-}
-
-// Clear the surface.
-pub fn clear(self: *Surface) void {
-    switch (self.backend) {
-        .Basic => |surface| @constCast(&surface).clear(),
-        .OpenGL => |surface| @constCast(&surface).clear()
-    }
-}
-
-// Fill the surface.
-pub fn fill(self: *Surface, color: Color) void {
-    switch (self.backend) {
-        .Basic => |surface| @constCast(&surface).fill(color),
-        .OpenGL => |surface| @constCast(&surface).fill(color)
-    }
-}
-
-// Read the surface.
-pub fn read(self: *Surface, format: Format, buffer: []u8) !void {
-    switch (self.backend) {
-        .Basic => |surface| try @constCast(&surface).read(format, buffer),
-        .OpenGL => |surface| try @constCast(&surface).read(format, buffer)
-    }
-}
 
 // The pixel format.
 pub const Format = enum(u4) {

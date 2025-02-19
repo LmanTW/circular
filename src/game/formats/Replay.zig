@@ -5,8 +5,8 @@ const Replay = @This();
 allocator: std.mem.Allocator,
 reader: Reader,
 
-ruleset: Ruleset,
 version: u32,
+ruleset: Ruleset,
 score_id: u64,
 beatmap_hash: []const u8,
 replay_hash: []const u8,
@@ -21,10 +21,10 @@ hit_4: u16,
 hit_5: u16,
 misses: u16,
 mods: u64,
-extra_mod_info: u16,
-timestamp: u64,
+mod_info: u16,
+frames: []Frame,
 life_graph: []const u8,
-frames: std.ArrayList(Frame),
+timestamp: u64,
 
 // The ruleset.
 pub const Ruleset = enum(u4) {
@@ -34,7 +34,7 @@ pub const Ruleset = enum(u4) {
     Mania
 };
 
-// The frame data.
+// The frame.
 pub const Frame = packed struct {
     w: i16,
     x: f32,
@@ -43,6 +43,7 @@ pub const Frame = packed struct {
 };
 
 // Initialize a replay from a file.
+// > [file] is no longer required after initializaion.
 pub fn initFromFile(file: std.fs.File, allocator: std.mem.Allocator) !Replay {
     const buffer = try allocator.alloc(u8, try file.getEndPos());
     defer allocator.free(buffer);
@@ -53,8 +54,10 @@ pub fn initFromFile(file: std.fs.File, allocator: std.mem.Allocator) !Replay {
 }
 
 // Initialize a replay from the memory.
+// > [buffer] is no longer required after initializaion.
 pub fn initFromMemory(buffer: []u8, allocator: std.mem.Allocator) !Replay {
     var reader = Reader.init(buffer, allocator);
+    errdefer reader.deinit();
 
     const ruleset =  try reader.readByte();
     const version = try reader.readInteger();
@@ -76,28 +79,39 @@ pub fn initFromMemory(buffer: []u8, allocator: std.mem.Allocator) !Replay {
     const compressed_length = try reader.readInteger();
     const compressed_data = try reader.read(compressed_length);
     const score_id = try reader.readLong();
-    const extra_mod_info = reader.readShort() catch 0;
+    const mod_info = reader.readShort() catch 0;
+
+    if (compressed_data.len < 13) {
+        return error.CorruptInput;
+    }
 
     var decompress = try std.compress.lzma.decompress(allocator, @constCast(&std.io.fixedBufferStream(compressed_data)).reader());
     defer decompress.deinit();
 
-    var stoarge = std.ArrayList(u8).init(allocator);
-    var chunk = try allocator.alloc(u8, 4096);
-    defer stoarge.deinit();
-    defer allocator.free(chunk);
+    // Read the LZMA header to get the decompressed size.
+    //
+    // 0      | LZMA model properties (lc, lp, pb) in encoded form.
+    // 1 ~ 4  | Dictionary size (u32, little-endian).
+    // 5 ~ 13 | Uncompressed size (u64, little-endian).
+
+    const decompressed_data = try allocator.alloc(u8, std.mem.readInt(u64, compressed_data[5..13], .little));
+    defer allocator.free(decompressed_data);
+
+    var offset = @as(u64, 0);
 
     while (true) {
-        const bytes_read = try decompress.reader().read(chunk);
+        const bytes_read = try decompress.read(decompressed_data[offset..]);
 
         if (bytes_read == 0) {
             break;
         }
 
-        try stoarge.appendSlice(chunk[0..bytes_read]);
+        offset += bytes_read;
     }
 
-    var frame_iterator = std.mem.splitAny(u8, stoarge.items, ",");
+    var frame_iterator = std.mem.splitAny(u8, decompressed_data, ",");
     var frames = std.ArrayList(Frame).init(allocator);
+    errdefer frames.deinit();
 
     while (frame_iterator.next()) |frame| {
         if (frame.len > 0) {
@@ -118,15 +132,15 @@ pub fn initFromMemory(buffer: []u8, allocator: std.mem.Allocator) !Replay {
                 .y = try std.fmt.parseFloat(f32, y.?),
                 .z = try std.fmt.parseInt(u32, z.?, 10)
             });
-        } 
+        }
     }
 
     return Replay{
         .allocator = allocator,
         .reader = reader,
 
-        .ruleset = @as(Ruleset, @enumFromInt(ruleset)),
         .version = version,
+        .ruleset = @as(Ruleset, @enumFromInt(ruleset)),
         .score_id = score_id,
         .beatmap_hash = beatmap_hash,
         .replay_hash = replay_hash,
@@ -141,59 +155,48 @@ pub fn initFromMemory(buffer: []u8, allocator: std.mem.Allocator) !Replay {
         .hit_5 = hit_5,
         .misses = misses,
         .mods = mods,
-        .extra_mod_info = extra_mod_info,
-        .timestamp = timestamp,
+        .mod_info = mod_info,
+        .frames = try frames.toOwnedSlice(),
         .life_graph = life_graph,
-        .frames = frames
+        .timestamp = timestamp
     };
 }
 
 // Deinitialize the replay.
 pub fn deinit(self: *Replay) void {
     self.reader.deinit();
-    self.frames.deinit();
-}
-
-// Get the length of the replay.
-pub fn getLength(self: *Replay) u64 {
-    var length = @as(i64, 0);
-
-    for (self.frames.items) |frame| {
-        length += frame.w;
-    }
-
-    return @as(u64, @intCast(length));
+    self.allocator.free(self.frames);
 }
 
 // The replay reader.
 pub const Reader = struct {
-    index: usize,
-    buffer: []u8,
-
     allocator: std.mem.Allocator,
-    stoarge: std.ArrayList([]const u8),
+    storage: std.ArrayList([]const u8),
+
+    buffer: []u8,
+    index: usize,
 
     // Initialize a reader.
     pub fn init(buffer: []u8, allocator: std.mem.Allocator) Reader {
         return Reader{
-            .index = 0,
-            .buffer = buffer,
-
             .allocator = allocator,
-            .stoarge = std.ArrayList([]const u8).init(allocator)
+            .storage = std.ArrayList([]const u8).init(allocator),
+
+            .buffer = buffer,
+            .index = 0
         };
     }
 
     // Deinitialize the reader.
     pub fn deinit(self: *Reader) void {
-        for (self.stoarge.items) |item| {
+        for (self.storage.items) |item| {
             self.allocator.free(item);
         }
 
-        self.stoarge.deinit();
+        self.storage.deinit();
     }
 
-    // Read specified amount of bytes.
+        // Read specified amount of bytes.
     pub fn read(self: *Reader, length: usize) ![]u8 {
         if (self.index + length > self.buffer.len) {
             return error.OutOfBound;
@@ -234,16 +237,12 @@ pub const Reader = struct {
             const byte = try self.readByte();
 
             value |= @as(usize, @intCast(byte & 0x7F)) << @as(std.math.Log2Int(usize), @intCast(shift));
-            
-            if ((byte & 0x80) == 0) {
-                return value;
-            }
-
             shift += 7;
-
-            if (shift >= @sizeOf(usize) * 8) {
+            
+            if ((byte & 0x80) == 0)
+                return value;
+            if (shift >= @sizeOf(usize) * 8) 
                 return error.Overflow;
-            }
         }
 
         return error.Incomplete;
@@ -252,12 +251,10 @@ pub const Reader = struct {
     // Read a "String".
     pub fn readString(self: *Reader) ![]const u8 {
         if (try self.readByte() == 0x0b) {
-            const length = try self.readULEB128();
+            const buffer = try self.allocator.dupe(u8, try self.read(try self.readULEB128()));
 
-            const buffer = try self.allocator.alloc(u8, length);
-            @memcpy(buffer, try self.read(length));
-
-            try self.stoarge.append(buffer);
+            // The string is owned by the reader so we need to keep a record of it.
+            try self.storage.append(buffer);
 
             return buffer;
         }

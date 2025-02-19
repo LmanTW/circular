@@ -4,8 +4,6 @@ const std = @import("std");
 const Storage = @This();
 
 allocator: std.mem.Allocator,
-
-home_path: []const u8,
 circular_path: []const u8,
 beatmaps_path: []const u8,
 
@@ -16,7 +14,7 @@ pub fn init(allocator: std.mem.Allocator) !Storage {
 
     const home_path = switch (builtin.target.os.tag) {
         .linux, .macos => env.get("HOME"),
-        .windows => env.get("%HOMEPATH%"),
+        .windows => env.get("HOMEPATH"),
 
         else => @compileError("Unsupported platform")
     } orelse {
@@ -25,14 +23,16 @@ pub fn init(allocator: std.mem.Allocator) !Storage {
 
     const circular_path = try std.fs.path.join(allocator, &.{home_path, ".circular"});
     const beatmaps_path = try std.fs.path.join(allocator, &.{circular_path, "beatmaps"});
-    
-    std.fs.makeDirAbsolute(circular_path) catch {};
-    std.fs.makeDirAbsolute(beatmaps_path) catch {};
+
+    std.fs.accessAbsolute(circular_path, .{}) catch {
+        try std.fs.makeDirAbsolute(circular_path);
+    };
+    std.fs.accessAbsolute(beatmaps_path, .{}) catch {
+        try std.fs.makeDirAbsolute(beatmaps_path);
+    };
 
     return Storage{
         .allocator = allocator,
-
-        .home_path = home_path,
         .circular_path = circular_path,
         .beatmaps_path = beatmaps_path
     };
@@ -49,14 +49,14 @@ pub fn clean(self: *Storage) !void {
     var directory = try std.fs.openDirAbsolute(self.beatmaps_path, .{});
     defer directory.close();
 
-    var iterator = directory.iterate();
-    var files = @as(usize, 0);
-
-    var oldest_filename = @as(?[]const u8, null);
-    var oldest_date = @as(?i128, null);
-
     while (true) {
-        while (try iterator.next()) |entry| {
+        var directory_iterator = directory.iterate();
+
+        var file_amount = @as(usize, 0);
+        var oldest_filename = @as(?[]const u8, null);
+        var oldest_date = @as(?i128, null);
+
+        while (try directory_iterator.next()) |entry| {
             const beatmap_path = try std.fs.path.join(self.allocator, &.{self.beatmaps_path, entry.name});
             defer self.allocator.free(beatmap_path);
 
@@ -70,30 +70,27 @@ pub fn clean(self: *Storage) !void {
                 oldest_date = stat.atime;
             }
 
-            files += 1;
+            file_amount += 1;
         }
 
-        if (files > 99 and oldest_filename != null) {
+        if (file_amount > 99 and oldest_filename != null) {
             const beatmap_path = try std.fs.path.join(self.allocator, &.{self.beatmaps_path, oldest_filename.?});
             defer self.allocator.free(beatmap_path);
 
             try std.fs.deleteFileAbsolute(beatmap_path);
 
-            files -= 1;
+            file_amount -= 1;
 
-            if (files <= 99) {
-                oldest_filename = null;
-                oldest_date = null;
-
+            if (file_amount < 100) {
                 continue;
             }
         }
 
         break;
-    } 
+    }
 }
 
-// Check a beatmap.
+// Check if a beatmap is downlaoded.
 pub fn checkBeatmap(self: *Storage, hash: []const u8) !bool {
     const beatmap_path = try std.fs.path.join(self.allocator, &.{self.beatmaps_path, hash});
     defer self.allocator.free(beatmap_path);
@@ -105,8 +102,8 @@ pub fn checkBeatmap(self: *Storage, hash: []const u8) !bool {
     return true;
 }
 
-// Get a beatmap.
-pub fn getBeatmap(self: *Storage, hash: []const u8, allocator: std.mem.Allocator) ![]u8 {
+// Read a beatmap.
+pub fn readBeatmap(self: *Storage, hash: []const u8, allocator: std.mem.Allocator) ![]u8 {
     if (!try self.checkBeatmap(hash)) {
         return error.BeatmapNotFound;
     }
@@ -124,33 +121,36 @@ pub fn getBeatmap(self: *Storage, hash: []const u8, allocator: std.mem.Allocator
 }
 
 // Download a beatmap.
-pub fn downloadBeatmap(self: *Storage, hash: []const u8) !void {
-    if (try self.checkBeatmap(hash)) {
-        return error.BeatmapExists;
-    }
+pub fn downlaodBeatmap(self: *Storage, hash: []const u8) !void {
+    const info_response = try fetch("https://catboy.best/api/v2/md5/{s}", .{hash}, self.allocator);
+    defer self.allocator.free(info_response);
 
-    var info_response = try fetch("https://catboy.best/api/v2/md5/{s}", .{hash}, self.allocator);
-    defer info_response.deinit();
-
-    const beatmap_info = try std.json.parseFromSlice(struct { beatmapset_id: u32, id: u32 }, self.allocator, info_response.items, .{
+    const parsed_info = try std.json.parseFromSlice(struct { beatmapset_id: u32 }, self.allocator, info_response, .{
         .ignore_unknown_fields = true
     });
-    defer beatmap_info.deinit();
+    defer parsed_info.deinit();
 
-    var data_response = try fetch("https://catboy.best/d/{}", .{beatmap_info.value.beatmapset_id}, self.allocator);
-    defer data_response.deinit();
+    const data_response = try fetch("https://catboy.best/d/{}", .{parsed_info.value.beatmapset_id}, self.allocator);
+    defer self.allocator.free(data_response);
 
     const beatmap_path = try std.fs.path.join(self.allocator, &.{self.beatmaps_path, hash});
     defer self.allocator.free(beatmap_path);
 
-    const file = try std.fs.createFileAbsolute(beatmap_path, .{});
-    defer file.close();
+    if (try self.checkBeatmap(hash)) {
+        const file = try std.fs.openFileAbsolute(beatmap_path, .{});
+        defer file.close();
 
-    try file.writeAll(data_response.items);
+        try file.writeAll(data_response);
+    } else {
+        const file = try std.fs.createFileAbsolute(beatmap_path, .{});
+        defer file.close();
+
+        try file.writeAll(data_response);
+    }
 }
 
 // Perform a one-shot HTTP request.
-fn fetch(comptime fmt: []const u8, args: anytype, allocator: std.mem.Allocator) !std.ArrayList(u8) {
+fn fetch(comptime fmt: []const u8, args: anytype, allocator: std.mem.Allocator) ![]u8 {
     var client = std.http.Client{ .allocator = allocator };
     defer client.deinit();
 
@@ -158,6 +158,7 @@ fn fetch(comptime fmt: []const u8, args: anytype, allocator: std.mem.Allocator) 
     defer allocator.free(url);
 
     var response_storage = std.ArrayList(u8).init(allocator);
+    errdefer response_storage.deinit();
 
     const response = try client.fetch(.{
         .location = .{
@@ -172,5 +173,5 @@ fn fetch(comptime fmt: []const u8, args: anytype, allocator: std.mem.Allocator) 
         return error.RequestFailed;
     }
 
-    return response_storage;
+    return try response_storage.toOwnedSlice();
 }

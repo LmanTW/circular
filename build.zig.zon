@@ -3,10 +3,6 @@
     .version = "0.0.0",
 
     .dependencies = .{
-        .libffmpeg = .{
-            .url = "git+https://github.com/7phs/ffmpeg.git#a679ac6f297e5b98612734c78eb3bbdca9d994b1",
-            .hash = "1220e70bd38061f2db93d6cba7c88461784a97f37bb2c8a17acbb7b1595145da9165",
-        },
         .zglfw = .{
             .url = "git+https://github.com/zig-gamedev/zglfw.git#e9bd486903b5904b6d4e27b8b3771b138a667ef1",
             .hash = "12209fb981e7aab58c2f9062ab526bd43df3d7953aa41e131a173c37ad35d10b1132",
@@ -19,7 +15,11 @@
             .url = "git+https://github.com/zig-gamedev/system_sdk.git#d1e724748d15cfcbf50c45ec7c7019688d45b16a",
             .hash = "122047a9298c4c9dd43389d418d6826d469b192246ba0944102964cdc57f94c562df",
         },
+        .zstbi = .{
+            .url = "git+https://github.com/zig-gamedev/zstbi.git#2517d3f77cc18ef735a9b4847666bc03d9afbce0",
+            .hash = "1220236000369d5fc71cd48c1f431f1b228dc2c736bef938dfd01917b85e2f0e3a90",
+        },
     },
 
-    .paths = .{"build.zig", "build.zig.zon", "src"},
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
 }

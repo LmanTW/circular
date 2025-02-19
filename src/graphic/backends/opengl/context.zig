@@ -1,19 +1,28 @@
 const glfw = @import("glfw");
+const opengl = @import("gl");
 const std = @import("std");
-const gl = @import("gl");
+const gl = opengl.bindings;
 
 var context = @as(?Window, null);
 var dependcies = @as(usize, 0);
+
+var texture_shader = @as(gl.Uint, undefined);
 
 // Initialize the context.
 pub fn init() !void {
     if (dependcies == 0) {
         try glfw.init(); 
 
+        glfw.windowHint(glfw.WindowHint.context_version_major, 3);
+        glfw.windowHint(glfw.WindowHint.context_version_minor, 3);
+        glfw.windowHint(glfw.WindowHint.opengl_forward_compat, true);
+
         context = try Window.create(1, 1, "circular", .{ .visible = false });
         context.?.setCurrent();
 
-        try gl.loadCoreProfile(glfw.getProcAddress, 4, 0);
+        try opengl.loadCoreProfile(glfw.getProcAddress, 4, 0);
+
+        texture_shader = try createProgram(@embedFile("./shaders/texture.vertex"), @embedFile("./shaders/texture.fragment"));
     }
 
     dependcies += 1;
@@ -24,9 +33,59 @@ pub fn deinit() void {
     dependcies -= 1;
 
     if (dependcies == 0) {
+        gl.deleteProgram(texture_shader);
+
         context.?.destory();
         glfw.terminate();
+
     }
+}
+
+// Create a program.
+fn createProgram(vertex_shader_source: []const u8, fragment_shader_source: []const u8) !gl.Uint {
+    const program = gl.createProgram();
+    errdefer gl.deleteProgram(program);
+
+    const vertex_shader = try compileShader(gl.VERTEX_SHADER, vertex_shader_source);
+    defer gl.deleteShader(vertex_shader);
+
+    const fragment_shader = try compileShader(gl.VERTEX_SHADER, fragment_shader_source);
+    defer gl.deleteShader(fragment_shader);
+
+    gl.attachShader(program, vertex_shader);
+    gl.attachShader(program, fragment_shader);
+
+    return program;
+}
+
+// Compile a shader.
+fn compileShader(kind: comptime_int, source: []const u8) !gl.Uint {
+    const shader = gl.createShader(kind);
+    errdefer gl.deleteShader(shader);
+
+    gl.shaderSource(shader, 1, @as([*c]const [*c]const gl.Char, @ptrCast(&source)), 0);
+    gl.compileShader(shader);
+
+    var status = @as(gl.Int, undefined);
+    gl.getShaderiv(shader, gl.COMPILE_STATUS, &status);
+
+    if (status != 1) {
+        var log_length: gl.Int = 0;
+        gl.getShaderiv(shader, gl.INFO_LOG_LENGTH, &log_length);
+
+        if (log_length > 0) {
+            var buffer = @as([1024]u8, undefined);
+            var bytes_read: gl.Int = 0;
+
+            gl.getShaderInfoLog(shader, buffer.len, &bytes_read, &buffer);
+
+            _ = try std.io.getStdOut().write(buffer[0..@as(usize, @intCast(bytes_read))]);
+        }
+
+        return error.CompilationFailed;
+    }
+
+    return shader;
 }
 
 /// The window.

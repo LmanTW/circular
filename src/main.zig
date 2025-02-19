@@ -1,15 +1,14 @@
+const options = @import("options");
 const std = @import("std");
-const gl = @import("gl");
 
-pub const Beatmap = @import("./formats/Beatmap.zig");
-pub const Replay = @import("./formats/Replay.zig");
-
-const Interface = @import("./Interface.zig");
-const Storage = @import("./Storage.zig");
+pub const Beatmap = @import("./game/formats/Beatmap.zig");
+pub const Replay = @import("./game/formats/Replay.zig");
+pub const Skin = @import("./game/formats/Skin.zig");
 
 const Surface = @import("./graphic/Surface.zig");
-const Color = @import("./graphic/Color.zig");
-const video = @import("./graphic/video.zig");
+const Replayer = @import("./game/Replayer.zig");
+const Interface = @import("./Interface.zig");
+const Storage = @import("./Storage.zig");
 
 // The main function :3
 pub fn main() !void {
@@ -19,60 +18,53 @@ pub fn main() !void {
     // Yes sir, your allocator.
     const allocator = gpa.allocator();
 
-    var interface = try Interface.init(allocator);
-    defer interface.deinit();
+    var application = try Application.init(allocator);
+    defer application.deinit();
 
-    if (interface.countArguments() > 0) {
-        const current_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-        const absolute_path = try std.fs.path.resolve(allocator, &.{current_path, interface.getArgument(0)});
-        defer allocator.free(current_path);
-        defer allocator.free(absolute_path);
+    if (application.interface.countArguments() > 0) {
+        application.interface.blank();
+        application.interface.log(.Running, "Loading the replay...", .{});
 
-        try interface.blank();
-        try interface.log(.Running, "Reading the file: \"{s}\"", .{absolute_path});
+        var replay = try application.loadReplay(application.interface.getArgument(0));
+        defer replay.deinit();
 
-        var replay = try loadReplay(absolute_path, &interface, allocator);
-        defer replay.deinit(); 
+        application.interface.log(.Complete, "Successfully loaded the replay!", .{});
+        application.interface.log(.Running, "Loading the beatmap...", .{});
 
-        try interface.log(.Complete, "Succesfully parsed the replay!", .{});
-        try interface.log(.Running, "Loading the beatmap...", .{});
-
-        var beatmap = try loadBeatmap(replay.beatmap_hash, &interface, allocator);
+        var beatmap = try application.loadBeatmap(&replay);
         defer beatmap.deinit();
 
-        try interface.log(.Complete, "Succesfully laoded the beatmap!", .{});
-        try interface.log(.Running, "Loading the difficulty...", .{});
+        application.interface.log(.Complete, "Successfully loaded the beatmap!", .{});
+        application.interface.log(.Running, "Loading the difficulty...", .{});
 
-        var difficulty = try loadDifficulty(&beatmap, replay.beatmap_hash, &interface, allocator);
+        var difficulty = try application.loadDifficulty(&beatmap, replay.beatmap_hash);
         defer difficulty.deinit();
 
-        try interface.log(.Complete, "Succesfully load the difficulty!", .{});
-        try interface.log(.Running, "Initializing the renderer...", .{});
+        application.interface.log(.Complete, "Successfully loaded the difficulty!", .{});
+        application.interface.log(.Running, "Loading the skin...", .{});
 
-        var surface = initSurface(&interface, allocator) catch {
-            try interface.log(.Error, "Failed to initialize the renderer.", .{});
-            try interface.blank();
+        var skin = try application.loadSkin(application.options.skin);
+        defer skin.deinit();
 
-            std.process.exit(1);
-        };
+        application.interface.log(.Complete, "Successfully loaded the skin!", .{});
+        application.interface.log(.Running, "Initializing the renderer...", .{});
+
+        var surface = try application.initSurface();
         defer surface.deinit();
 
-        try interface.log(.Complete, "Succesfully initialized the renderer!", .{});
+        application.interface.log(.Complete, "Successfully initialized the renderer!", .{});
+        application.interface.log(.Running, "Initializing the replayer...", .{});
 
-        var encoder = try video.Encoder.init(interface.getOption("output", "replay.mp4"), surface.width, surface.height, interface.getOption("ffmpeg", "ffmpeg"), allocator);
-        defer encoder.deinit();
+        var replayer = try application.initReplayer(replay.ruleset);
+        defer replayer.deinit();
 
-        surface.fill(Color.init(255, 0, 0, 1));
+        try replayer.loadDifficulty(&difficulty);
+        try replayer.loadReplay(&replay);
 
-        const buffer = try allocator.alloc(u8, (@as(u64, @intCast(surface.width)) * surface.height) * 3);
-        defer allocator.free(buffer);
-
-        try surface.read(.RGB, buffer);
-        try encoder.addFrame(buffer);
-
-        try encoder.finalize();
+        application.interface.log(.Complete, "Successfully initialized the replayer!", .{});
+        application.interface.blank();
     } else {
-        _ = try interface.stdout.write(
+        application.interface.write(
             \\
             \\ Circular (v0.1)
             \\   - The lightweight osu! replay renderer.
@@ -81,117 +73,212 @@ pub fn main() !void {
             \\   circular [...options] [*.osr]
             \\
             \\ Options:
-            \\   log="verbose"       | The logging format. ("none", "verbose", "json")
+            \\   output="replay.mp4"  | The filename of the output video.
             \\
-            \\   fps=30              | The frame rate of the video.
-            \\   width=1280          | The width of the video.
-            \\   height=720          | The height of the video.
+            \\   log.format="verbose" | The logging format. ("none", "verbose", "json")
+            \\   log.level="info"     | The logging level. ("info", "debug")
             \\
-            \\   output="replay.mp4" | The filename of the output video.
+            \\   video.fps=30         | The frame rate of the video.
+            \\   video.width=1280     | The width of the video.
+            \\   video.height=720     | The height of the video.
             \\
-            \\   backend="opengl"    | The rendering backend. ("basic", "opengl")
-            \\   threads="auto"      | The amount CPU threads to use.
+            \\   skin="default"       | The filename of the skin to use.
             \\
-            \\   ffmpeg="ffmpeg"     | The command/path to ffmpeg.
+            \\   ffmpeg="ffmpeg"      | The command/path to ffmpeg.
+            \\   backend="opengl"     | The rendering backend. ("basic", "opengl")
+            \\   threads="auto"       | The amount CPU threads to use.
             \\
             \\
         );
     }
 }
 
-// Load the replay.
-pub fn loadReplay(absolute_path: []const u8, interface: *Interface, allocator: std.mem.Allocator) !Replay {
-    const file = std.fs.openFileAbsolute(absolute_path, .{}) catch {
-        try interface.log(.Error, "Failed to open the file.", .{});
-        try interface.blank();
+// The application.
+const Application = struct {
+    allocator: std.mem.Allocator,
+    interface: Interface,
 
-        std.process.exit(1);
-    };
-    defer file.close();
+    options: struct {
+        output: []const u8,
 
-    const buffer = try allocator.alloc(u8, try file.getEndPos());
-    defer allocator.free(buffer);
+        fps: u8,
+        width: u16,
+        height: u16,
 
-    _ = try file.readAll(buffer);
+        skin: []const u8,
 
-    try interface.log(.Complete, "Succesfully read the file!", .{});
-    try interface.log(.Running, "Parsing the replay...", .{});
+        backend: []const u8,
+        threads: u8,
 
-    const replay = Replay.initFromMemory(buffer, allocator) catch {
-        try interface.log(.Error, "Failed to parse the replay.", .{});
-        try interface.blank();
+        ffmpeg: []const u8
+    },
 
-        std.process.exit(1);
-    }; 
+    // Initialize an application
+    pub fn init(allocator: std.mem.Allocator) !Application {
+        var interface = try Interface.init(allocator);
 
-    return replay;
-}
+        return Application{
+            .allocator = allocator,
+            .interface = interface,
 
-// Load the beatmap.
-pub fn loadBeatmap(hash: []const u8, interface: *Interface, allocator: std.mem.Allocator) !Beatmap {
-    var storage = try Storage.init(allocator);
-    defer storage.deinit();
+            .options = .{
+                .output = interface.getOption("output", "replay.mp4"),
+
+                .fps = interface.parseOptionRange(u8, "video.fps", 1, null, 30),
+                .width = interface.parseOptionRange(u16, "video.width", 1, null, 1280),
+                .height = interface.parseOptionRange(u16, "video.height", 1, null, 720),
+
+                .skin = interface.getOption("skin", "default"),
+
+                .ffmpeg = interface.getOption("ffmpeg", "ffmpeg"),
+                .backend = interface.getOption("backend", "opengl"),
+                .threads = interface.parseOptionRange(u8, "threads", 1, null, @as(u8, @intCast(try std.Thread.getCpuCount())))
+            }
+        };
+    }
+
+    // Deinitialize the application
+    pub fn deinit(self: *Application) void {
+        self.interface.deinit();
+    }
     
-    if (!try storage.checkBeatmap(hash)) {
-        try interface.log(.Progress, "Downloading the beatmap...", .{});
+    // Load the replay.
+    pub fn loadReplay(self: *Application, filename: []const u8) !Replay { 
+        const file = std.fs.cwd().openFile(filename, .{}) catch {
+            const current_path = try std.fs.cwd().realpathAlloc(self.allocator, ".");
+            const absolute_path = try std.fs.path.resolve(self.allocator, &.{current_path, filename});
+            defer self.allocator.free(current_path);
+            defer self.allocator.free(absolute_path);
 
-        storage.downloadBeatmap(hash) catch {
-            try interface.log(.Error, "Failed to download the beatmap.", .{});
-            try interface.blank();
+            self.interface.log(.Error, "Failed to open the file: \"{s}\"", .{absolute_path});
+            self.interface.blank();
 
             std.process.exit(1);
         };
+        defer file.close();
 
-        try interface.log(.Progress, "Succesfully downloaded the beatmap!", .{});
+        const buffer = try self.allocator.alloc(u8, try file.getEndPos());
+        defer self.allocator.free(buffer);
+
+        _ = try file.readAll(buffer);
+
+       return Replay.initFromMemory(buffer, self.allocator) catch {
+            self.interface.log(.Error, "Failed to load the replay.", .{});
+            self.interface.blank();
+
+            std.process.exit(1);
+        };
     }
 
-    try storage.clean();
+    // Load the beatmap.
+    pub fn loadBeatmap(self: *Application, replay: *Replay) !Beatmap {
+        var storage = try Storage.init(self.allocator);
+        defer storage.deinit();
 
-    const buffer = try storage.getBeatmap(hash, allocator);
-    defer allocator.free(buffer);
+        if (!try storage.checkBeatmap(replay.beatmap_hash)) {
+            self.interface.log(.Progress, "Downloading the beatmap...", .{});
+            self.interface.log(.Info, "Currently using Mino to download the beatmap.", .{});
+            self.interface.log(.Info, "Check out their awesome service: \"https://catboy.best\"", .{});
 
-    const beatmap = Beatmap.initFromMemory(buffer, allocator) catch {
-        try interface.log(.Error, "Failed to load the beatmap.", .{});
-        try interface.blank();
+            storage.downlaodBeatmap(replay.beatmap_hash) catch {
+                self.interface.log(.Error, "Failed to download the beatmap.", .{});
+                self.interface.blank();
 
-        std.process.exit(1);
-    };
+                std.process.exit(1);
+            };
 
-    return beatmap;
-}
+            self.interface.log(.Progress, "Clearing the cache...", .{});
 
-// Load the difficulty.
-pub fn loadDifficulty(beatmap: *Beatmap, hash: []const u8, interface: *Interface, allocator: std.mem.Allocator) !Beatmap.Difficulty {
-    const difficulty = beatmap.findDifficulty(hash, allocator) catch {
-        try interface.log(.Error, "Failed to load the difficulty.", .{});
-        try interface.blank();
+            try storage.clean();
+        }
 
-        std.process.exit(1);
-    } orelse {
-        try interface.log(.Error, "Cannot find the difficulty.", .{});
-        try interface.blank();
+        const buffer = try storage.readBeatmap(replay.beatmap_hash, self.allocator);
+        defer self.allocator.free(buffer);
 
-        std.process.exit(1);
-    };
+        return Beatmap.initFromMemory(buffer, self.allocator) catch {
+           self.interface.log(.Error, "Failed to load the beatmap.", .{});
+           self.interface.blank();
 
-    return difficulty;
-}
-
-// Initialize the surface.
-pub fn initSurface(interface: *Interface, allocator: std.mem.Allocator) !Surface {
-    const backend = interface.getOption("backend", "opengl");
-    const threads = interface.parseOption(u8, "threads", @as(u8, @intCast(try std.Thread.getCpuCount())));
-    const width = interface.parseOption(u16, "width", 1280);
-    const height = interface.parseOption(u16, "height", 720);
-
-    if (std.mem.eql(u8, backend, "basic")) {
-        return Surface.init(.Basic, width, height, threads, allocator);
-    } else if (std.mem.eql(u8, backend, "opengl")) {
-        return Surface.init(.OpenGL, width, height, threads, allocator);
-    } else {
-        try interface.log(.Error, "Unknown backend: \"{s}\"", .{backend});
-        try interface.blank();
-
-        std.process.exit(1);
+           std.process.exit(1);
+        };
     }
-}
+
+    // Load the difficulty.
+    pub fn loadDifficulty(self: *Application, beatmap: *Beatmap, hash: []const u8) !Beatmap.Difficulty {
+       const filename = beatmap.findDifficulty(hash) orelse {
+           self.interface.log(.Error, "Difficulty not found.", .{});
+           self.interface.blank();
+
+           std.process.exit(1);
+       };
+
+       return (beatmap.getDifficulty(filename, self.allocator) catch {
+            self.interface.log(.Error, "Failed to load the difficulty.", .{});
+            self.interface.blank();
+
+            std.process.exit(1);
+        }).?; 
+    }
+
+    // Load the skin.
+    pub fn loadSkin(self: *Application, filename: []const u8) !Skin {
+        const file = std.fs.cwd().openFile(filename, .{}) catch {
+            const current_path = try std.fs.cwd().realpathAlloc(self.allocator, ".");
+            const absolute_path = try std.fs.path.resolve(self.allocator, &.{current_path, filename});
+            defer self.allocator.free(current_path);
+            defer self.allocator.free(absolute_path);
+
+            self.interface.log(.Error, "Failed to open the file: \"{s}\"", .{absolute_path});
+            self.interface.blank();
+
+            std.process.exit(1);
+        };
+        defer file.close();
+
+        const buffer = try self.allocator.alloc(u8, try file.getEndPos());
+        defer self.allocator.free(buffer);
+
+        _ = try file.readAll(buffer);
+
+       return Skin.initFromMemory(buffer, self.allocator) catch {
+            self.interface.log(.Error, "Failed to load the skin.", .{});
+            self.interface.blank();
+
+            std.process.exit(1);
+        };
+    }
+
+    // Initialize the surface.
+    pub fn initSurface(self: *Application) !Surface {
+        var backend = @as(Surface.Backend, undefined);
+
+        if (std.mem.eql(u8, self.options.backend, "basic"))
+            backend = .Basic;
+        if (std.mem.eql(u8, self.options.backend, "opengl"))
+            backend = .OpenGL;
+
+        self.interface.log(.Debug, "Basic:  {s}", .{if (options.backend_basic) "Available" else "Unavailable"});
+        self.interface.log(.Debug, "OpenGL: {s}", .{if (options.backend_opengl) "Available" else "Unavailable"});
+
+        return Surface.init(backend, self.options.width, self.options.height, self.options.threads, self.allocator) catch {
+            self.interface.log(.Error, "Failed to initialize the renderer.", .{});
+            self.interface.blank();
+
+            std.process.exit(1);
+        };
+    }
+
+    // Initialize the replayer.
+    pub fn initReplayer(self: *Application, ruleset: Replay.Ruleset) !Replayer {
+        switch (ruleset) {
+            .Mania => return try Replayer.init(.Mania, self.allocator),
+
+            else => {
+                self.interface.log(.Error, "Unsupported ruleset: \"{s}\"", .{@tagName(ruleset)});
+                self.interface.blank();
+
+                std.process.exit(1);
+            }
+        }
+    }
+};

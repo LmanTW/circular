@@ -1,8 +1,10 @@
 const std = @import("std");
 
+const BasicTexture = @import("./Texture.zig");
 const Surface = @import("../../Surface.zig");
-const Threads = @import("./Threads.zig");
+const Texture = @import("../../Texture.zig");
 const Color = @import("../../Color.zig");
+const Worker = @import("./Worker.zig");
 
 const BasicSurface = @This();
 
@@ -12,11 +14,26 @@ pixels: []u8,
 width: u16,
 height: u16,
 
-threads: u8,
+workers: Worker.Group,
+
+// The vtable.
+pub const VTable = Surface.VTable{
+    .deinit = deinit,
+
+    .clear = clear,
+    .fill = fill,
+
+    .loadTexture = loadTexture,
+    .drawTexture = drawTexture,
+
+    .read = read
+};
 
 // Initialize a surface.
 pub fn init(width: u16, height: u16, threads: u8, allocator: std.mem.Allocator) !BasicSurface {
     const pixels = try allocator.alloc(u8, (@as(u64, @intCast(width)) * height) * 4);
+    errdefer allocator.free(pixels);
+
     @memset(pixels, 0);
 
     return BasicSurface{
@@ -25,14 +42,17 @@ pub fn init(width: u16, height: u16, threads: u8, allocator: std.mem.Allocator) 
 
         .width = width,
         .height = height,
-
-        .threads = threads
+        
+        .workers = try Worker.Group.init(threads, allocator)
     };
 }
 
 // Deinitialize the surface.
-pub fn deinit(self: *BasicSurface) void {
+pub fn deinit(ptr: *anyopaque) void {
+    const self = @as(*BasicSurface, @ptrCast(@alignCast(ptr)));
+
     self.allocator.free(self.pixels);
+    self.workers.deinit();
 }
 
 // Get a pixel on the surface.
@@ -88,23 +108,29 @@ pub fn setByOffset(self: *BasicSurface, offset: u64, color: Color) void {
 }
 
 // Clear the surface.
-pub fn clear(self: *BasicSurface) void {
+pub fn clear(ptr: *anyopaque) !void {
+    const self = @as(*BasicSurface, @ptrCast(@alignCast(ptr)));
+
     @memset(self.pixels, 0);
 }
 
 // Fill the surface.
-pub fn fill(self: *BasicSurface, color: Color) void {
-    var threads = Threads.define(u64).init(self.threads, .{0, self.pixels.len / 4}, self.allocator);
-    defer threads.deinit();
+pub fn fill(ptr: *anyopaque, color: Color) !void {
+    const self = @as(*BasicSurface, @ptrCast(@alignCast(ptr)));
 
-    threads.spawn(.{
+    var ctx = FillTaskContext{
         .surface = self,
         .color = color
-    }, fillTask) catch {};
+    };
+
+    try self.workers.assign(@as(*anyopaque, @ptrCast(&ctx)), fillTask, .{0, self.pixels.len / 4});
+    try self.workers.wait();
 }
 
-// A task to fill the surface.
-fn fillTask(ctx: anytype, range: [2]u64) void {
+// The task to fill the surface.
+fn fillTask(ptr: *anyopaque, range: [2]u64) void {
+    const ctx = @as(*FillTaskContext, @ptrCast(@alignCast(ptr)));
+
     var offset = range[0] * 4;
 
     while (offset < range[1] * 4) {
@@ -114,8 +140,28 @@ fn fillTask(ctx: anytype, range: [2]u64) void {
     }
 }
 
+// The context of the task to fill the surface.
+const FillTaskContext = struct {
+    surface: *BasicSurface,
+    color: Color
+};
+
+// Load a texture.
+pub fn loadTexture(ptr: *anyopaque, buffer: []u8) !Texture {
+    const self = @as(*BasicSurface, @ptrCast(@alignCast(ptr)));
+
+    return BasicTexture.init(buffer, self.allocator);
+}
+
+// Draw a texture.
+pub fn drawTexture(_: *anyopaque, _: i17, _: i17, _: u16, _: u16, _: Texture) !void {
+
+}
+
 // Read the surface.
-pub fn read(self: *BasicSurface, format: Surface.Format, buffer: []u8) !void {
+pub fn read(ptr: *anyopaque, format: Surface.Format, buffer: []u8) !void {
+    const self = @as(*BasicSurface, @ptrCast(@alignCast(ptr)));
+
     const length = switch (format) {
         .RGB => (@as(u64, @intCast(self.width)) * self.height) * 3,
         .RGBA => (@as(u64, @intCast(self.width)) * self.height) * 4
