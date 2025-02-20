@@ -8,6 +8,7 @@ pub const Skin = @import("./game/formats/Skin.zig");
 const Surface = @import("./graphic/Surface.zig");
 const Replayer = @import("./game/Replayer.zig");
 const Interface = @import("./Interface.zig");
+const Color = @import("./graphic/Color.zig");
 const Storage = @import("./Storage.zig");
 
 // The main function :3
@@ -240,7 +241,7 @@ const Application = struct {
 
         _ = try file.readAll(buffer);
 
-       return Skin.initFromMemory(buffer, self.allocator) catch {
+        return Skin.initFromMemory(buffer, self.allocator) catch {
             self.interface.log(.Error, "Failed to load the skin.", .{});
             self.interface.blank();
 

@@ -35,8 +35,8 @@ pub const Ruleset = enum(u4) {
 };
 
 // The frame.
-pub const Frame = packed struct {
-    w: i16,
+pub const Frame = struct {
+    w: i32,
     x: f32,
     y: f32,
     z: u32
@@ -126,12 +126,14 @@ pub fn initFromMemory(buffer: []u8, allocator: std.mem.Allocator) !Replay {
                 return error.IncompleteFrame;
             }
 
-            try frames.append(.{
-                .w = try std.fmt.parseInt(i16, w.?, 10),
-                .x = try std.fmt.parseFloat(f32, x.?),
-                .y = try std.fmt.parseFloat(f32, y.?),
-                .z = try std.fmt.parseInt(u32, z.?, 10)
-            });
+            if (!std.mem.eql(u8, w.?, "-12345")) {
+                try frames.append(.{
+                    .w = try std.fmt.parseInt(i32, w.?, 10),
+                    .x = try std.fmt.parseFloat(f32, x.?),
+                    .y = try std.fmt.parseFloat(f32, y.?),
+                    .z = try std.fmt.parseInt(u32, z.?, 10)
+                });
+            }
         }
     }
 

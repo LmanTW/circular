@@ -90,13 +90,13 @@ pub fn deinit(self: *Surface) void {
 }
 
 // Clear the surface.
-pub fn clear(self: *Surface) void {
-    self.vtable.clear(self.unmanaged);
+pub fn clear(self: *Surface) !void {
+    try self.vtable.clear(self.unmanaged);
 }
 
 // Fill the surface.
-pub fn fill(self: *Surface, color: Color) void {
-    self.vtable.clear(self.unmanaged, color);
+pub fn fill(self: *Surface, color: Color) !void {
+    try self.vtable.fill(self.unmanaged, color);
 }
 
 // Read the surface.

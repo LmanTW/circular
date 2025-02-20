@@ -4,6 +4,7 @@ const Surface = @import("../../../graphic/Surface.zig");
 const Beatmap = @import("../../formats/Beatmap.zig");
 const Replay = @import("../../formats/Replay.zig");
 const Replayer = @import("../../Replayer.zig");
+const judgement = @import("./judgement.zig");
 
 const ManiaReplayer = @This();
 
@@ -43,8 +44,8 @@ pub fn deinit(ptr: *anyopaque) void {
 pub fn loadDifficulty(ptr: *anyopaque, difficulty: *Beatmap.Difficulty) !void {
     const self = @as(*ManiaReplayer, @ptrCast(@alignCast(ptr)));
 
-    if (self.objects != null) {
-        return error.BeatmapAlreadyLaoded;
+    if (self.objects) |objects| {
+        self.allocator.free(objects);
     }
 
     var objects = std.ArrayList(Object).init(self.allocator);
@@ -65,12 +66,14 @@ pub fn loadDifficulty(ptr: *anyopaque, difficulty: *Beatmap.Difficulty) !void {
             return error.IncompleteObject;
         }
 
+        const column = std.math.clamp(@as(u4, @intFromFloat(@floor(try std.fmt.parseFloat(f32, x.?) * (@as(f32, @floatFromInt(self.columns)) / 512)))) , 0, self.columns - 1);
+
         switch (try std.fmt.parseInt(u8, kind.?, 10)) {
             1 => {
                 try objects.append(.{
-                    .column = std.math.clamp(@as(u4, @intFromFloat(@floor(try std.fmt.parseFloat(f32, x.?) * (@as(f32, @floatFromInt(self.columns)) / 512)))) , 0, self.columns - 1),
+                    .column = column,
 
-                    .start = try std.fmt.parseInt(u64, time.?, 10),
+                    .start = try std.fmt.parseInt(i64, time.?, 10),
                     .end = null,
 
                     .press = null,
@@ -86,10 +89,10 @@ pub fn loadDifficulty(ptr: *anyopaque, difficulty: *Beatmap.Difficulty) !void {
                 }
 
                 try objects.append(.{
-                    .column = std.math.clamp(@as(u4, @intFromFloat(@floor(try std.fmt.parseFloat(f32, x.?) * (@as(f32, @floatFromInt(self.columns)) / 512)))) , 0, self.columns - 1),
+                    .column = column,
 
-                    .start = try std.fmt.parseInt(u64, time.?, 10),
-                    .end = try std.fmt.parseInt(u64, end.?, 10),
+                    .start = try std.fmt.parseInt(i64, time.?, 10),
+                    .end = try std.fmt.parseInt(i64, end.?, 10),
 
                     .press = null,
                     .release = null
@@ -104,7 +107,10 @@ pub fn loadDifficulty(ptr: *anyopaque, difficulty: *Beatmap.Difficulty) !void {
 }
 
 // Load a replay.
-pub fn loadReplay(_: *anyopaque, _: *Replay) !void {
+pub fn loadReplay(ptr: *anyopaque, replay: *Replay) !void {
+    const self = @as(*ManiaReplayer, @ptrCast(@alignCast(ptr)));
+
+    judgement.judge(self, replay);
 }
 
 // The object.
@@ -112,9 +118,9 @@ pub fn loadReplay(_: *anyopaque, _: *Replay) !void {
 pub const Object = struct {
     column: u8,
 
-    start: u64,
-    end: ?u64,
+    start: i64,
+    end: ?i64,
 
-    press: ?u64,
-    release: ?u64
+    press: ?i64,
+    release: ?i64
 };
