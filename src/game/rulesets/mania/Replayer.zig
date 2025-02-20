@@ -2,6 +2,7 @@ const std = @import("std");
 
 const Surface = @import("../../../graphic/Surface.zig");
 const Beatmap = @import("../../formats/Beatmap.zig");
+const video = @import("../../../graphic/video.zig");
 const Replay = @import("../../formats/Replay.zig");
 const Replayer = @import("../../Replayer.zig");
 const judgement = @import("./judgement.zig");
@@ -18,7 +19,21 @@ pub const VTable = Replayer.VTable{
     .deinit = deinit,
 
     .loadDifficulty = loadDifficulty,
-    .loadReplay = loadReplay
+    .loadReplay = loadReplay,
+
+    .render = render
+};
+
+// The object.
+// > If [end] is not <null>, it means the object is a "hold".
+pub const Object = struct {
+    column: u8,
+
+    start: i64,
+    end: ?i64,
+
+    press: ?i64,
+    release: ?i64
 };
 
 // Initialize a replayer.
@@ -110,17 +125,13 @@ pub fn loadDifficulty(ptr: *anyopaque, difficulty: *Beatmap.Difficulty) !void {
 pub fn loadReplay(ptr: *anyopaque, replay: *Replay) !void {
     const self = @as(*ManiaReplayer, @ptrCast(@alignCast(ptr)));
 
-    judgement.judge(self, replay);
+    if (self.objects == null) {
+        return error.BeatmapNotLoaded;
+    }
+
+    try judgement.judge(self, replay);
 }
 
-// The object.
-// > If [end] is not <null>, it means the object is a "hold".
-pub const Object = struct {
-    column: u8,
-
-    start: i64,
-    end: ?i64,
-
-    press: ?i64,
-    release: ?i64
-};
+// Render a frame.
+pub fn render(_: *anyopaque, _: *Surface, _: *video.Encoder, _: u64) !void {
+}

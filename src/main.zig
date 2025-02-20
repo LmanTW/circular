@@ -9,6 +9,7 @@ const Surface = @import("./graphic/Surface.zig");
 const Replayer = @import("./game/Replayer.zig");
 const Interface = @import("./Interface.zig");
 const Color = @import("./graphic/Color.zig");
+const video = @import("./graphic/video.zig");
 const Storage = @import("./Storage.zig");
 
 // The main function :3
@@ -54,6 +55,12 @@ pub fn main() !void {
         defer surface.deinit();
 
         application.interface.log(.Complete, "Successfully initialized the renderer!", .{});
+        application.interface.log(.Running, "Initializing the video encoder...", .{});
+    
+        var encoder = try application.initEncoder();
+        defer encoder.deinit();
+
+        application.interface.log(.Complete, "Successfully initialized the video encoder!", .{});
         application.interface.log(.Running, "Initializing the replayer...", .{});
 
         var replayer = try application.initReplayer(replay.ruleset);
@@ -266,6 +273,22 @@ const Application = struct {
             self.interface.blank();
 
             std.process.exit(1);
+        };
+    }
+
+    // Initialize the encoder.
+    pub fn initEncoder(self: *Application) !video.Encoder {
+        return video.Encoder.init(self.options.output, .{
+            .fps = self.options.fps,
+            .width = self.options.width,
+            .height = self.options.height,
+
+            .ffmpeg = self.options.ffmpeg
+        }, self.allocator) catch {
+            self.interface.log(.Error, "Failed to start the ffmpeg: \"{s}\"", .{self.options.ffmpeg});
+            self.interface.blank();
+
+            std.process.exit(1);            
         };
     }
 
