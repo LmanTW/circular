@@ -8,13 +8,16 @@ const BasicTexture = @This();
 allocator: std.mem.Allocator,
 pixels: []u8,
 
+width: u16,
+height: u16,
+
 // The vtable.
 pub const VTable = Texture.VTable{
     .deinit = deinit
 };
 
 // Initialize a texture.
-pub fn init(buffer: []u8, allocator: std.mem.Allocator) !Texture {
+pub fn init(buffer: []u8, allocator: std.mem.Allocator) !BasicTexture {
     stbi.init(allocator);
     defer stbi.deinit();
 
@@ -24,18 +27,12 @@ pub fn init(buffer: []u8, allocator: std.mem.Allocator) !Texture {
     const pixels = try allocator.alloc(u8, image.data.len);
     @memcpy(pixels, image.data);
 
-    const unmanaged = try allocator.create(BasicTexture);
-    unmanaged.* = .{ .allocator = allocator, .pixels = pixels };
-
-    return Texture{
+    return BasicTexture{
         .allocator = allocator,
-        .unmanaged = unmanaged,
+        .pixels = pixels,
             
         .width = @as(u16, @intCast(image.width)),
         .height = @as(u16, @intCast(image.height)),
-
-        .backend = .Basic,
-        .vtable = &VTable
     };
 }
 

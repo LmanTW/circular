@@ -9,13 +9,16 @@ const OpenGLTexture = @This();
 allocator: std.mem.Allocator,
 texture: gl.Uint,
 
+width: u16,
+height: u16,
+
 // The vtable.
 pub const VTable = Texture.VTable{
     .deinit = deinit
 };
 
 // Initialize a texture.
-pub fn init(buffer: []u8, allocator: std.mem.Allocator) !Texture {
+pub fn init(buffer: []u8, allocator: std.mem.Allocator) !OpenGLTexture {
     stbi.init(allocator);
     defer stbi.deinit();
 
@@ -31,18 +34,12 @@ pub fn init(buffer: []u8, allocator: std.mem.Allocator) !Texture {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, @as(gl.Sizei, @intCast(image.width)), @as(gl.Sizei, @intCast(image.height)), 0, gl.RGBA, gl.UNSIGNED_BYTE, @as(*anyopaque, @ptrCast(image.data)));
     gl.bindTexture(gl.TEXTURE_2D, 0);
 
-    const unmanaged = try allocator.create(OpenGLTexture);
-    unmanaged.* = .{ .allocator = allocator, .texture = texture };
-
-    return Texture{
+    return OpenGLTexture{
         .allocator = allocator,
-        .unmanaged = unmanaged,
+        .texture = texture,
 
         .width = @as(u16, @intCast(image.width)),
         .height = @as(u16, @intCast(image.height)),
-
-        .backend = .OpenGL,
-        .vtable = &VTable
     };
 }
 

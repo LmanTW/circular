@@ -6,6 +6,7 @@ pub const Replay = @import("./game/formats/Replay.zig");
 pub const Skin = @import("./game/formats/Skin.zig");
 
 const Surface = @import("./graphic/Surface.zig");
+const Texture = @import("./graphic/Texture.zig");
 const Replayer = @import("./game/Replayer.zig");
 const Interface = @import("./Interface.zig");
 const Color = @import("./graphic/Color.zig");
@@ -75,11 +76,11 @@ pub fn main() !void {
         const image = try allocator.dupe(u8, @embedFile("./game/assets/lazer.png"));
         defer allocator.free(image);
 
-        var texture = try surface.loadTexture(image);
+        var texture = try Texture.init(surface.backend, image, allocator);
         defer texture.deinit();
 
         try surface.fill(Color.init(0, 0, 0, 1));
-        try surface.drawTexture(texture, 0, 0, 100, 100);
+        try surface.drawTexture(texture, 0, 0, 512, 512);
 
         const buffer = try allocator.alloc(u8, (@as(u64, @intCast(surface.width)) * surface.height) * 3);
         defer allocator.free(buffer);

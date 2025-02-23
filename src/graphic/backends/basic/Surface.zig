@@ -23,7 +23,7 @@ pub const VTable = Surface.VTable{
     .clear = clear,
     .fill = fill,
 
-    .loadTexture = loadTexture,
+    .drawRectangle = drawRectangle,
     .drawTexture = drawTexture,
 
     .read = read
@@ -77,16 +77,16 @@ pub fn getByOffset(self: *BasicSurface, offset: u64) Color {
 }
 
 // Set a pixel on surface.
-pub fn set(self: *BasicSurface, x: i17, y: i17, color: Color) void {
+pub fn set(self: *BasicSurface, color: Color, x: i17, y: i17) void {
     if ((x >= 0 and x < self.width) and (y >= 0 and y < self.height)) {
         const offset = ((@as(u64, @intCast(y)) * self.width) + @as(u64, @intCast(x))) * 4;
 
-        self.setByOffset(offset, color);
+        self.setByOffset(color, offset);
     }
 }
 
 // Set a pixel by the offset.
-pub fn setByOffset(self: *BasicSurface, offset: u64, color: Color) void {
+pub fn setByOffset(self: *BasicSurface, color: Color, offset: u64) void {
     if (color.a >= 1) {
         self.pixels[offset] = color.r;
         self.pixels[offset + 1] = color.g;
@@ -118,7 +118,7 @@ pub fn clear(ptr: *anyopaque) !void {
 pub fn fill(ptr: *anyopaque, color: Color) !void {
     const self = @as(*BasicSurface, @ptrCast(@alignCast(ptr)));
 
-    var ctx = FillTaskContext{
+    var ctx = FillContext{
         .surface = self,
         .color = color
     };
@@ -129,36 +129,180 @@ pub fn fill(ptr: *anyopaque, color: Color) !void {
 
 // The task to fill the surface.
 fn fillTask(ptr: *anyopaque, range: [2]u64) void {
-    const ctx = @as(*FillTaskContext, @ptrCast(@alignCast(ptr)));
+    const ctx = @as(*FillContext, @ptrCast(@alignCast(ptr)));
 
     var offset = range[0] * 4;
 
     while (offset < range[1] * 4) {
-        ctx.surface.setByOffset(offset, ctx.color);
+        ctx.surface.setByOffset(ctx.color, offset);
 
         offset += 4;
     }
 }
 
 // The context of the task to fill the surface.
-const FillTaskContext = struct {
+const FillContext = struct {
     surface: *BasicSurface,
     color: Color
 };
 
-// Load a texture.
-pub fn loadTexture(ptr: *anyopaque, buffer: []u8) !Texture {
+// Draw a rectangle.
+pub fn drawRectangle(ptr: *anyopaque, color: Color, x: i17, y: i17, width: u16, height: u16) !void {
     const self = @as(*BasicSurface, @ptrCast(@alignCast(ptr)));
 
-    return BasicTexture.init(buffer, self.allocator);
+    var ctx = DrawRectangleContext{
+        .surface = self,
+        .color = color,
+            
+        .x = x,
+        .y = y,
+        .width = width,
+        .height = height
+    };
+
+    try self.workers.assign(@as(*anyopaque, @ptrCast(&ctx)), drawRectangleTask, .{0, if (width > height) width else height});
+    try self.workers.wait();
 }
 
+// The task to draw a rectangle.
+fn drawRectangleTask(ptr: *anyopaque, range: [2]u64) void {
+    const ctx = @as(*DrawRectangleContext, @ptrCast(@alignCast(ptr)));
+
+    const end_x = ctx.x +| @as(i17, @intCast(ctx.width));
+    const end_y = ctx.y +| @as(i17, @intCast(ctx.height));
+
+    if (ctx.width > ctx.height) {
+        var x = ctx.x + @as(i17, @intCast(range[0]));
+        var y = ctx.y;
+
+        while (x < ctx.x +| end_x) {
+            while (y < ctx.y +| end_y) {
+                ctx.surface.set(ctx.color, x, y);
+
+                y += 1;
+            }
+
+            x += 1;
+            y = ctx.y;
+        }
+    } else {
+        var x = ctx.x;
+        var y = ctx.y + @as(i16, @intCast(range[0]));
+
+        while (y < ctx.y +| end_y) {
+            while (x < ctx.x +| end_x) {
+                ctx.surface.set(ctx.color, x, y);
+
+                x += 1;
+            }
+
+            x = ctx.x;
+            y += 1;
+        }
+    }
+}
+
+// The context of the task to draw a rectangle.
+const DrawRectangleContext = struct {
+    surface: *BasicSurface,
+    color: Color,
+
+    x: i17,
+    y: i17,
+    width: u16,
+    height: u16
+};
+
 // Draw a texture.
-pub fn drawTexture(_: *anyopaque, texture: Texture, _: i17, _: i17, _: u16, _: u16) !void {
+pub fn drawTexture(ptr: *anyopaque, texture: Texture, x: i17, y: i17, width: u16, height: u16) !void {
     if (texture.backend != .Basic) {
         return error.BackendMismatch;
     }
+
+    const self = @as(*BasicSurface, @ptrCast(@alignCast(ptr)));
+
+    var ctx = DrawTextureContext{
+        .surface = self,
+        .texture = @as(*BasicTexture, @ptrCast(@alignCast(texture.unmanaged))),
+            
+        .x = x,
+        .y = y,
+        .width = width,
+        .height = height
+    };
+
+    try self.workers.assign(@as(*anyopaque, @ptrCast(&ctx)), drawTextureTask, .{0, if (width > height) width else height});
+    try self.workers.wait();
 }
+
+// The task to draw a texture.
+pub fn drawTextureTask(ptr: *anyopaque, range: [2]u64) void {
+    const ctx = @as(*DrawTextureContext, @ptrCast(@alignCast(ptr)));
+
+    const end_x = ctx.x +| @as(i17, @intCast(ctx.width));
+    const end_y = ctx.y +| @as(i17, @intCast(ctx.height));
+    const x_scale = @as(f32, @floatFromInt(ctx.texture.width)) / @as(f32, @floatFromInt(ctx.width));
+    const y_scale = @as(f32, @floatFromInt(ctx.texture.height)) / @as(f32, @floatFromInt(ctx.height)); 
+
+    if (ctx.width > ctx.height) {
+        var surface_x = ctx.x + @as(i17, @intCast(range[0]));
+        var surface_y = ctx.y;
+
+        while (surface_x < end_x) {
+            while (surface_y < end_y) {
+                const texture_x = @as(u16, @intFromFloat(@ceil(@as(f32, @floatFromInt(surface_x - ctx.x)) * x_scale)));
+                const texture_y = @as(u16, @intFromFloat(@ceil(@as(f32, @floatFromInt(surface_y - ctx.y)) * y_scale)));
+                const texture_offset = (@as(u64, @intCast(texture_y)) * 4) + texture_x;
+
+                ctx.surface.set(Color.init(
+                    ctx.texture.pixels[texture_offset],
+                    ctx.texture.pixels[texture_offset + 1],
+                    ctx.texture.pixels[texture_offset + 2],
+                    @as(f32, @floatFromInt(ctx.texture.pixels[texture_offset + 3])) / 255
+                ), surface_x, surface_y);
+
+                surface_y += 1;
+            }
+
+            surface_x += 1;
+            surface_y = ctx.y;
+        }
+    } else {
+        var surface_x = ctx.x;
+        var surface_y = ctx.y + @as(i17, @intCast(range[0]));
+
+        while (surface_y < end_y) {
+            while (surface_x < end_x) {
+                const texture_x = @as(u16, @intFromFloat(@ceil(@as(f32, @floatFromInt(surface_x - ctx.x)) * x_scale)));
+                const texture_y = @as(u16, @intFromFloat(@ceil(@as(f32, @floatFromInt(surface_y - ctx.y)) * y_scale)));
+                const texture_offset = ((@as(u64, @intCast(texture_y)) * ctx.texture.width) + texture_x) * 4;
+
+                ctx.surface.set(Color.init(
+                    ctx.texture.pixels[texture_offset],
+                    ctx.texture.pixels[texture_offset + 1],
+                    ctx.texture.pixels[texture_offset + 2],
+                    @as(f32, @floatFromInt(ctx.texture.pixels[texture_offset + 3])) / 255
+                ), surface_x, surface_y);
+
+                surface_x += 1;
+            }
+
+            surface_x = ctx.x;
+            surface_y += 1;
+        }
+    }
+}
+
+// The context of the task to draw a texture.
+const DrawTextureContext = struct {
+    surface: *BasicSurface,
+    texture: *BasicTexture,
+
+    x: i17,
+    y: i17,
+    width: u16,
+    height: u16
+};
 
 // Read the surface.
 pub fn read(ptr: *anyopaque, format: Surface.Format, buffer: []u8) !void {

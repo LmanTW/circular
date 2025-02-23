@@ -27,7 +27,7 @@ pub const VTable = Surface.VTable{
     .clear = clear,
     .fill = fill,
 
-    .loadTexture = loadTexture,
+    .drawRectangle = drawRectangle,
     .drawTexture = drawTexture,
 
     .read = read
@@ -56,17 +56,18 @@ pub fn init(width: u16, height: u16, allocator: std.mem.Allocator) !OpenGLSurfac
     var vertext_buffer = @as(gl.Uint, undefined);
 
     gl.genVertexArrays(1, @as([*]gl.Uint, @ptrCast(&vertex_array)));
-    gl.genBuffers(1, @as([*]gl.Uint, @ptrCast(&vertext_buffer)));
-
     gl.bindVertexArray(vertex_array);
+    defer gl.bindVertexArray(0);
+
+    gl.genBuffers(1, @as([*]gl.Uint, @ptrCast(&vertext_buffer)));
     gl.bindBuffer(gl.ARRAY_BUFFER, vertext_buffer);
+    defer gl.bindBuffer(gl.ARRAY_BUFFER, 0);
+
     gl.bufferData(gl.ARRAY_BUFFER, 12 * @sizeOf(gl.Float), null, gl.DYNAMIC_DRAW);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 2 * @sizeOf(gl.Float), null);
     gl.vertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 2 * @sizeOf(gl.Float), @ptrFromInt((2 * @sizeOf(gl.Float))));
     gl.enableVertexAttribArray(0);
     gl.enableVertexAttribArray(1);
-    gl.bindVertexArray(0);
-    gl.bindBuffer(gl.ARRAY_BUFFER, 0);
 
     return OpenGLSurface{
         .allocator = allocator,
@@ -117,11 +118,9 @@ pub fn fill(ptr: *anyopaque, color: Color) !void {
     gl.clear(gl.COLOR_BUFFER_BIT);
 }
 
-// Load a texture.
-pub fn loadTexture(ptr: *anyopaque, buffer: []u8) !Texture {
-    const self = @as(*OpenGLSurface, @ptrCast(@alignCast(ptr)));
-
-    return OpenGLTexture.init(buffer, self.allocator);
+// Draw a rectangle.
+pub fn drawRectangle(_: *anyopaque, _: Color, _: i17, _: i17, _: u16, _: u16) !void {
+    
 }
 
 // Draw a texture.
@@ -133,12 +132,13 @@ pub fn drawTexture(ptr: *anyopaque, texture: Texture, _: i17, _: i17, _: u16, _:
     const self = @as(*OpenGLSurface, @ptrCast(@alignCast(ptr)));
 
     gl.bindBuffer(gl.ARRAY_BUFFER, self.vertex_buffer);
+    defer gl.bindBuffer(gl.ARRAY_BUFFER, 0);
+
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, 12 * @sizeOf(gl.Float), &[_]gl.Float{
        -0.5,  0.5, 0, 0,
         0.5,  0.5, 0, 1,
        -0.5, -0.5, 1, 1,
     });
-    gl.bindBuffer(gl.ARRAY_BUFFER, 0);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, self.buffer);
     gl.bindVertexArray(self.vertex_array);

@@ -3,6 +3,7 @@ const std = @import("std");
 
 const BasicTexture = if (options.backend_basic) @import("./backends/basic/Texture.zig") else struct {};
 const OpenGLTexture = if (options.backend_basic) @import("./backends/opengl/Texture.zig") else struct {};
+const Surface = @import("./Surface.zig");
 
 const Texture = @This();
 
@@ -12,13 +13,62 @@ unmanaged: *anyopaque,
 width: u16,
 height: u16,
 
-backend: Backend,
+backend: Surface.Backend,
 vtable: *const VTable,
 
 // The vtable.
 pub const VTable = struct {
     deinit: *const fn(ptr: *anyopaque) void
 };
+
+// Initialize a texture.
+pub fn init(backend: Surface.Backend, buffer: []u8, allocator: std.mem.Allocator) !Texture {
+    switch (backend) {
+        .Basic => {
+            if (!comptime options.backend_basic) {
+                return error.BackendNotAvialiable;
+            }
+
+            const unmanaged = try allocator.create(BasicTexture);
+            errdefer allocator.destroy(unmanaged);
+
+            unmanaged.* = try BasicTexture.init(buffer, allocator);
+
+            return Texture{
+                .allocator = allocator,
+                .unmanaged = unmanaged,
+
+                .width = unmanaged.width,
+                .height = unmanaged.height,
+
+                .backend = backend,
+                .vtable = &BasicTexture.VTable
+            };
+        },
+
+        .OpenGL => {
+            if (!comptime options.backend_opengl) {
+                return error.OpenGLNotAvialiable;
+            }
+
+            const unmanaged = try allocator.create(OpenGLTexture);
+            errdefer allocator.destroy(unmanaged);
+
+            unmanaged.* = try OpenGLTexture.init(buffer, allocator);
+
+            return Texture{
+                .allocator = allocator,
+                .unmanaged = unmanaged,
+
+                .width = unmanaged.width,
+                .height = unmanaged.height,
+
+                .backend = backend,
+                .vtable = &OpenGLTexture.VTable
+            };
+        }
+    }
+}
 
 // Deinitialize the texture.
 pub fn deinit(self: *Texture) void {
@@ -29,9 +79,3 @@ pub fn deinit(self: *Texture) void {
         .OpenGL => self.allocator.destroy(@as(*OpenGLTexture, @ptrCast(@alignCast(self.unmanaged))))
     }
 }
-
-// The backend.
-pub const Backend = enum(u4) {
-    Basic,
-    OpenGL
-};
