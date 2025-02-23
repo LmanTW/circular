@@ -14,11 +14,11 @@ const Storage = @import("./Storage.zig");
 
 // The main function :3
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+    var debug = std.heap.DebugAllocator(.{}).init;
+    defer _ = debug.deinit();
 
     // Yes sir, your allocator.
-    const allocator = gpa.allocator();
+    const allocator = debug.allocator();
 
     var application = try Application.init(allocator);
     defer application.deinit();
@@ -71,6 +71,21 @@ pub fn main() !void {
 
         application.interface.log(.Complete, "Successfully initialized the replayer!", .{});
         application.interface.blank();
+
+        const image = try allocator.dupe(u8, @embedFile("./game/assets/lazer.png"));
+        defer allocator.free(image);
+
+        var texture = try surface.loadTexture(image);
+        defer texture.deinit();
+
+        try surface.fill(Color.init(0, 0, 0, 1));
+        try surface.drawTexture(texture, 0, 0, 100, 100);
+
+        const buffer = try allocator.alloc(u8, (@as(u64, @intCast(surface.width)) * surface.height) * 3);
+        defer allocator.free(buffer);
+
+        try surface.read(.RGB, buffer);
+        try encoder.addFrame(buffer);
     } else {
         application.interface.write(
             \\
@@ -151,7 +166,7 @@ const Application = struct {
     }
     
     // Load the replay.
-    pub fn loadReplay(self: *Application, filename: []const u8) !Replay { 
+    pub fn loadReplay(self: *Application, filename: []const u8) !Replay {
         const file = std.fs.cwd().openFile(filename, .{}) catch {
             const current_path = try std.fs.cwd().realpathAlloc(self.allocator, ".");
             const absolute_path = try std.fs.path.resolve(self.allocator, &.{current_path, filename});

@@ -25,7 +25,7 @@ pub const VTable = struct {
     fill: *const fn(ptr: *anyopaque, color: Color) anyerror!void,
 
     loadTexture: *const fn(ptr: *anyopaque, buffer: []u8) anyerror!Texture,
-    drawTexture: *const fn(ptr: *anyopaque, x: i17, y: i17, width: u16, height: u16, texture: Texture) anyerror!void,
+    drawTexture: *const fn(ptr: *anyopaque, texture: Texture, x: i17, y: i17, width: u16, height: u16) anyerror!void,
     
     read: *const fn(ptr: *anyopaque, format: Format, buffer: []u8) anyerror!void
 };
@@ -97,6 +97,16 @@ pub fn clear(self: *Surface) !void {
 // Fill the surface.
 pub fn fill(self: *Surface, color: Color) !void {
     try self.vtable.fill(self.unmanaged, color);
+}
+
+// Load a texture.
+pub fn loadTexture(self: *Surface, buffer: []u8) !Texture {
+    return try self.vtable.loadTexture(self.unmanaged, buffer);
+}
+
+// Draw a texture.
+pub fn drawTexture(self: *Surface, texture: Texture, x: i17, y: i17, width: u16, height: u16) !void {
+    try self.vtable.drawTexture(self.unmanaged, texture, x, y, width, height);
 }
 
 // Read the surface.

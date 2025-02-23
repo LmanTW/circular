@@ -5,7 +5,6 @@ const Beatmap = @import("../../formats/Beatmap.zig");
 const video = @import("../../../graphic/video.zig");
 const Replay = @import("../../formats/Replay.zig");
 const Replayer = @import("../../Replayer.zig");
-const judgement = @import("./judgement.zig");
 
 const ManiaReplayer = @This();
 
@@ -129,9 +128,70 @@ pub fn loadReplay(ptr: *anyopaque, replay: *Replay) !void {
         return error.BeatmapNotLoaded;
     }
 
-    try judgement.judge(self, replay);
+    var timestamp = @as(i64, 0);
+    var start = @as(u64, 0);
+
+    var previous_columns = @as(?u16, null);
+
+    for (replay.frames) |frame| {
+        const columns = @as(u16, @intFromFloat(@trunc(frame.x)));
+
+        for (0..self.columns) |column| {
+            for (self.objects.?[start..]) |*object| {
+                if (object.column == column) {
+                    if (object.end == null) {
+                        // The object is a "note". 
+
+                        if (object.press == null) {
+                            if (columns & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and @abs(timestamp - object.start) < 151) {
+                                object.press = timestamp;
+
+                                start += 1;
+
+                                break;
+                            }
+                        } 
+
+                        if (timestamp > object.start + 151) {
+                            start += 1;
+
+                            break;
+                        }
+                    } else {
+                        // The object is a "hold".
+
+                        if (object.press == null) {
+                            if (columns & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and @abs(timestamp - object.start) < 151) {
+                                object.press = timestamp;
+                            }
+                        } else if (object.release == null) {
+                            if (previous_columns.? & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and columns & (@as(u32, 1) << @as(u5, @intCast(column))) == 0) {
+                                if (@abs(timestamp - object.end.?) < 151) {
+                                    object.release = timestamp;
+
+                                    start += 1;
+
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (timestamp > object.end.? + 151) {
+                            start += 1;
+
+                            break;
+                        }
+                    }
+                } 
+            }
+        }
+
+        timestamp += frame.w;
+        previous_columns = columns;
+    }
 }
 
 // Render a frame.
 pub fn render(_: *anyopaque, _: *Surface, _: *video.Encoder, _: u64) !void {
+    
 }

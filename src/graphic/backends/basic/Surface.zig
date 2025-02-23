@@ -154,7 +154,7 @@ pub fn loadTexture(ptr: *anyopaque, buffer: []u8) !Texture {
 }
 
 // Draw a texture.
-pub fn drawTexture(_: *anyopaque, _: i17, _: i17, _: u16, _: u16, texture: Texture) !void {
+pub fn drawTexture(_: *anyopaque, texture: Texture, _: i17, _: i17, _: u16, _: u16) !void {
     if (texture.backend != .Basic) {
         return error.BackendMismatch;
     }

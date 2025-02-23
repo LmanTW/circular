@@ -76,7 +76,7 @@ pub fn build(b: *std.Build) !void {
 pub fn addOptions(b: *std.Build, module: *std.Build.Module) void {
     const options = b.addOptions();
     options.addOption(bool, "backend_basic", true);
-    options.addOption(bool, "backend_opengl", true);
+    options.addOption(bool, "backend_opengl", true); 
 
     module.addOptions("options", options);
 }

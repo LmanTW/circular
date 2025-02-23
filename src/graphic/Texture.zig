@@ -1,4 +1,8 @@
+const options = @import("options");
 const std = @import("std");
+
+const BasicTexture = if (options.backend_basic) @import("./backends/basic/Texture.zig") else struct {};
+const OpenGLTexture = if (options.backend_basic) @import("./backends/opengl/Texture.zig") else struct {};
 
 const Texture = @This();
 
@@ -19,6 +23,11 @@ pub const VTable = struct {
 // Deinitialize the texture.
 pub fn deinit(self: *Texture) void {
     self.vtable.deinit(self.unmanaged);
+
+    switch (self.backend) {
+        .Basic => self.allocator.destroy(@as(*BasicTexture, @ptrCast(@alignCast(self.unmanaged)))),
+        .OpenGL => self.allocator.destroy(@as(*OpenGLTexture, @ptrCast(@alignCast(self.unmanaged))))
+    }
 }
 
 // The backend.

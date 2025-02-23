@@ -16,19 +16,20 @@ pub const VTable = Texture.VTable{
 
 // Initialize a texture.
 pub fn init(buffer: []u8, allocator: std.mem.Allocator) !Texture {
+    stbi.init(allocator);
+    defer stbi.deinit();
+
     var image = try stbi.Image.loadFromMemory(buffer, 4);
     defer image.deinit();
-
-    const pixels = try allocator.alloc(u8, image.data.len);
-    @memcpy(pixels, image.data);
 
     var texture = @as(gl.Uint, undefined);
 
     gl.genTextures(1, @as([*]gl.Uint, @ptrCast(&texture)));
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, @as(gl.Sizei, @intCast(image.width)), @as(gl.Sizei, @intCast(image.height)), 0, gl.RGBA, gl.UNSIGNED_BYTE, @as(*anyopaque, @ptrCast(pixels)));
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, @as(gl.Sizei, @intCast(image.width)), @as(gl.Sizei, @intCast(image.height)), 0, gl.RGBA, gl.UNSIGNED_BYTE, @as(*anyopaque, @ptrCast(image.data)));
+    gl.bindTexture(gl.TEXTURE_2D, 0);
 
     const unmanaged = try allocator.create(OpenGLTexture);
     unmanaged.* = .{ .allocator = allocator, .texture = texture };

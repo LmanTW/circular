@@ -14,7 +14,10 @@ pub const VTable = Texture.VTable{
 };
 
 // Initialize a texture.
-pub fn init(buffer: []u8, allocator: std.mem.Allocator) !Texture {    
+pub fn init(buffer: []u8, allocator: std.mem.Allocator) !Texture {
+    stbi.init(allocator);
+    defer stbi.deinit();
+
     var image = try stbi.Image.loadFromMemory(buffer, 4);
     defer image.deinit();
 
