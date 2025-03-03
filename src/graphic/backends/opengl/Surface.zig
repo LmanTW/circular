@@ -19,6 +19,7 @@ texture: gl.Uint,
 
 vertex_array: gl.Uint,
 vertex_buffer: gl.Uint,
+index_buffer: gl.Uint,
 
 // The vtable.
 pub const VTable = Surface.VTable{
@@ -54,20 +55,22 @@ pub fn init(width: u16, height: u16, allocator: std.mem.Allocator) !OpenGLSurfac
 
     var vertex_array = @as(gl.Uint, undefined);
     var vertext_buffer = @as(gl.Uint, undefined);
+    var index_buffer = @as(gl.Uint, undefined);
 
     gl.genVertexArrays(1, @as([*]gl.Uint, @ptrCast(&vertex_array)));
     gl.bindVertexArray(vertex_array);
-    defer gl.bindVertexArray(0);
-
     gl.genBuffers(1, @as([*]gl.Uint, @ptrCast(&vertext_buffer)));
     gl.bindBuffer(gl.ARRAY_BUFFER, vertext_buffer);
-    defer gl.bindBuffer(gl.ARRAY_BUFFER, 0);
 
-    gl.bufferData(gl.ARRAY_BUFFER, 12 * @sizeOf(gl.Float), null, gl.DYNAMIC_DRAW);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 2 * @sizeOf(gl.Float), null);
-    gl.vertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 2 * @sizeOf(gl.Float), @ptrFromInt((2 * @sizeOf(gl.Float))));
+    gl.bufferData(gl.ARRAY_BUFFER, 24 * @sizeOf(gl.Float), null, gl.DYNAMIC_DRAW);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, gl.FALSE, 4 * @sizeOf(gl.Float), null);
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, gl.FALSE, 4 * @sizeOf(gl.Float), @ptrFromInt((2 * @sizeOf(gl.Float))));
     gl.enableVertexAttribArray(0);
     gl.enableVertexAttribArray(1);
+
+    gl.genBuffers(1, @as([*]gl.Uint, @ptrCast(&index_buffer)));
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, 6 * @sizeOf(gl.Float), &[_]gl.Float{0, 1, 2, 2, 3, 0}, gl.STATIC_DRAW);
 
     return OpenGLSurface{
         .allocator = allocator,
@@ -79,7 +82,8 @@ pub fn init(width: u16, height: u16, allocator: std.mem.Allocator) !OpenGLSurfac
         .texture = texture,
 
         .vertex_array = vertex_array,
-        .vertex_buffer = vertext_buffer
+        .vertex_buffer = vertext_buffer,
+        .index_buffer = index_buffer
     };
 }
 
@@ -91,6 +95,7 @@ pub fn deinit(ptr: *anyopaque) void {
     gl.deleteTextures(1, @as([*]gl.Uint, @ptrCast(&self.texture)));
     gl.deleteVertexArrays(1, @as([*]gl.Uint, @ptrCast(&self.vertex_array)));
     gl.deleteBuffers(1, @as([*]gl.Uint, @ptrCast(&self.vertex_buffer)));
+    gl.deleteBuffers(1, @as([*]gl.Uint, @ptrCast(&self.index_buffer)));
 
     context.deinit();
 }
@@ -99,7 +104,7 @@ pub fn deinit(ptr: *anyopaque) void {
 pub fn clear(ptr: *anyopaque) !void {
     const self = @as(*OpenGLSurface, @ptrCast(@alignCast(ptr)));
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, self.buffer);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, self.buffer); 
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 }
@@ -108,6 +113,7 @@ pub fn clear(ptr: *anyopaque) !void {
 pub fn fill(ptr: *anyopaque, color: Color) !void {
     const self = @as(*OpenGLSurface, @ptrCast(@alignCast(ptr)));
 
+    gl.viewport(0, 0, @as(gl.Sizei, @intCast(self.width)), @as(gl.Sizei, @intCast(self.height)));
     gl.bindFramebuffer(gl.FRAMEBUFFER, self.buffer);
     gl.clearColor(
         @as(gl.Float, @floatFromInt(color.r)) / 255,
@@ -120,7 +126,7 @@ pub fn fill(ptr: *anyopaque, color: Color) !void {
 
 // Draw a rectangle.
 pub fn drawRectangle(_: *anyopaque, _: Color, _: i17, _: i17, _: u16, _: u16) !void {
-    
+       
 }
 
 // Draw a texture.
@@ -134,16 +140,40 @@ pub fn drawTexture(ptr: *anyopaque, texture: Texture, _: i17, _: i17, _: u16, _:
     gl.bindBuffer(gl.ARRAY_BUFFER, self.vertex_buffer);
     defer gl.bindBuffer(gl.ARRAY_BUFFER, 0);
 
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, 12 * @sizeOf(gl.Float), &[_]gl.Float{
-       -0.5,  0.5, 0, 0,
-        0.5,  0.5, 0, 1,
-       -0.5, -0.5, 1, 1,
-    });
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, 24 * @sizeOf(gl.Float), &[_]gl.Float{
+      -0.5, -0.5, 0.0, 0.0,
+      -0.5,  0.5, 0.0, 1.0,
+       0.5, -0.5, 1.0, 0.0,
 
+      -0.5,  0.5, 0.0, 1.0,
+       0.5, -0.5, 1.0, 0.0,
+       0.5,  0.5, 1.0, 1.0,
+
+//      -0.5, -0.5,  0.0,  0.0, // Bottom Left
+//       0.5, -0.5,  1.0,  0.0, // Bottom Right
+//       0.5,  0.5,  1.0,  1.0, // Top Right
+//
+//       0.5,  0.5,  1.0,  1.0, // Top Right
+//      -0.5,  0.5,  0.0,  1.0, // Top Left
+//      -0.5, -0.5,  0.0,  0.0  // Bottom Left
+//
+//        -0.5, -0.5,  0.0, 0.0, // Bottom Left
+//         0.5, -0.5,  1.0, 0.0, // Bottom Right
+//         0.5,  0.5,  1.0, 1.0, // Top Right
+//        -0.5,  0.5,  0.0, 1.0  // Top Left
+    }); 
+
+    gl.viewport(0, 0, @as(gl.Sizei, @intCast(self.width)), @as(gl.Sizei, @intCast(self.height)));
     gl.bindFramebuffer(gl.FRAMEBUFFER, self.buffer);
     gl.bindVertexArray(self.vertex_array);
     gl.useProgram(context.texture_program);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.uniform1i(gl.getUniformLocation(context.texture_program, "textureSampler"), 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, @as(*OpenGLTexture, @ptrCast(@alignCast(texture.unmanaged))).texture);
+    // gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, &self.index_buffer);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    std.debug.print("Error: {}\n", .{gl.getError()});
 }
 
 // Read the surface.
