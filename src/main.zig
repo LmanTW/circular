@@ -79,14 +79,21 @@ pub fn main() !void {
         var texture = try Texture.init(surface.backend, image, allocator);
         defer texture.deinit();
 
-        try surface.fill(Color.init(0, 0, 0, 1));
-        try surface.drawTexture(texture, 0, 0, 512, 512);
+        const start = std.time.milliTimestamp();
 
         const buffer = try allocator.alloc(u8, (@as(u64, @intCast(surface.width)) * surface.height) * 3);
         defer allocator.free(buffer);
 
-        try surface.read(.RGB, buffer);
-        try encoder.addFrame(buffer);
+        for (1..1024) |frame| {
+            const timestamp = @as(u64, @intFromFloat((@as(f32, @floatFromInt(frame)) / @as(f32, @floatFromInt(encoder.fps))) * 1000));
+
+            try replayer.render(&surface, timestamp);
+
+            try surface.read(.RGB, buffer);
+            try encoder.addFrame(buffer);
+        }
+
+        std.debug.print("Time: {}ms\n", .{std.time.milliTimestamp() - start});
     } else {
         application.interface.write(
             \\
@@ -110,7 +117,7 @@ pub fn main() !void {
             \\
             \\   ffmpeg="ffmpeg"      | The command/path to ffmpeg.
             \\   backend="opengl"     | The rendering backend. ("basic", "opengl")
-            \\   threads="auto"       | The amount CPU threads to use.
+            \\   threads="auto"       | The amount of CPU threads to use.
             \\
             \\
         );
@@ -299,7 +306,8 @@ const Application = struct {
             .width = self.options.width,
             .height = self.options.height,
 
-            .ffmpeg = self.options.ffmpeg
+            .ffmpeg = self.options.ffmpeg,
+            .threads = self.options.threads
         }, self.allocator) catch {
             self.interface.log(.Error, "Failed to start the ffmpeg: \"{s}\"", .{self.options.ffmpeg});
             self.interface.blank();

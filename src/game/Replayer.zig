@@ -21,7 +21,7 @@ pub const VTable = struct {
     loadDifficulty: *const fn(ptr: *anyopaque, difficulty: *Beatmap.Difficulty) anyerror!void,
     loadReplay: *const fn(ptr: *anyopaque, replay: *Replay) anyerror!void,
 
-    render: *const fn(ptr: *anyopaque, surface: *Surface, encoder: *video.Encoder, timestamp: u64) anyerror!void
+    render: *const fn(ptr: *anyopaque, surface: *Surface, timestamp: u64) anyerror!void
 };
 
 // Initialize a replayer.
@@ -64,8 +64,8 @@ pub fn loadReplay(self: *Replayer, replay: *Replay) !void {
 }
 
 // Render a frame.
-pub fn render(self: *Replayer, surface: *Surface, encoder: *video.Encoder, timestamp: u64) !void {
-    try self.vtable.render(self.unmanaged, surface, encoder, timestamp);
+pub fn render(self: *Replayer, surface: *Surface, timestamp: u64) !void {
+    try self.vtable.render(self.unmanaged, surface, timestamp);
 }
 
 // The ruleset.

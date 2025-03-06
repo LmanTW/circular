@@ -242,7 +242,7 @@ pub fn drawTextureTask(ptr: *anyopaque, range: [2]u64) void {
     const end_x = ctx.x +| @as(i17, @intCast(ctx.width));
     const end_y = ctx.y +| @as(i17, @intCast(ctx.height));
     const x_scale = @as(f32, @floatFromInt(ctx.texture.width)) / @as(f32, @floatFromInt(ctx.width));
-    const y_scale = @as(f32, @floatFromInt(ctx.texture.height)) / @as(f32, @floatFromInt(ctx.height)); 
+    const y_scale = @as(f32, @floatFromInt(ctx.texture.height)) / @as(f32, @floatFromInt(ctx.height));
 
     if (ctx.width > ctx.height) {
         var surface_x = ctx.x + @as(i17, @intCast(range[0]));

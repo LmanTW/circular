@@ -3,7 +3,7 @@ const std = @import("std");
 const release_targets: []const std.Target.Query = &.{
     .{ .cpu_arch = .x86_64, .os_tag = .linux },
     .{ .cpu_arch = .x86_64, .os_tag = .macos },
-    .{ .cpu_arch = .x86_64, .os_tag = .windows },
+    .{ .cpu_arch = .x86_64, .os_tag = .windows }
 
     // .{ .cpu_arch = .aarch64, .os_tag = .linux },
     // .{ .cpu_arch = .aarch64, .os_tag = .macos }
@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("./src/main.zig"),
 
         .target = target,
-        .optimize = optimize 
+        .optimize = optimize,
     });
 
     addOptions(b, test_exe.root_module);
@@ -118,6 +118,5 @@ pub fn addDependencies(b: *std.Build, module: *std.Build.Module) void {
     module.addImport("stbi", stbi.module("root"));
     module.addImport("glfw", glfw.module("root"));
     module.addImport("gl", opengl.module("root"));
-    module.linkLibrary(stbi.artifact("zstbi"));
     module.linkLibrary(glfw.artifact("glfw"));
 }

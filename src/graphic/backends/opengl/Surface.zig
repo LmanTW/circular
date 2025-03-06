@@ -125,43 +125,70 @@ pub fn fill(ptr: *anyopaque, color: Color) !void {
 }
 
 // Draw a rectangle.
-pub fn drawRectangle(_: *anyopaque, _: Color, _: i17, _: i17, _: u16, _: u16) !void {
-       
+pub fn drawRectangle(ptr: *anyopaque, color: Color, x: i17, y: i17, width: u16, height: u16) !void {
+    const self = @as(*OpenGLSurface, @ptrCast(@alignCast(ptr)));
+
+    const width_scale = @as(f32, @floatFromInt(self.width)) / 2;
+    const height_scale = @as(f32, @floatFromInt(self.height)) / 2;
+    const start_x = (@as(gl.Float, @floatFromInt(x)) / width_scale) - 1;
+    const start_y = (@as(gl.Float, @floatFromInt(y)) / height_scale) - 1;
+    const end_x = start_x + (@as(gl.Float, @floatFromInt(width)) / width_scale);
+    const end_y = start_y + (@as(gl.Float, @floatFromInt(height)) / height_scale);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, self.vertex_buffer);
+    defer gl.bindBuffer(gl.ARRAY_BUFFER, 0);
+
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, 24 * @sizeOf(gl.Float), &[_]gl.Float{
+        start_x, start_y, 0.0, 0.0,
+        start_x, end_y,   0.0, 1.0,
+        end_x,   start_y, 1.0, 0.0,
+
+        start_x, end_y,   0.0, 1.0,
+        end_x,   start_y, 1.0, 0.0,
+        end_x,   end_y,   1.0, 1.0,
+    });
+
+    gl.viewport(0, 0, @as(gl.Sizei, @intCast(self.width)), @as(gl.Sizei, @intCast(self.height)));
+    gl.bindFramebuffer(gl.FRAMEBUFFER, self.buffer);
+    gl.bindVertexArray(self.vertex_array);
+    gl.useProgram(context.fill_program); 
+    gl.uniform4f(
+        gl.getUniformLocation(context.fill_program, "uColor"),
+        @as(gl.Float, @floatFromInt(color.r)) / 255,
+        @as(gl.Float, @floatFromInt(color.g)) / 255,
+        @as(gl.Float, @floatFromInt(color.b)) / 255,
+        std.math.clamp(color.a, 0, 1)
+    ); 
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
 
 // Draw a texture.
-pub fn drawTexture(ptr: *anyopaque, texture: Texture, _: i17, _: i17, _: u16, _: u16) !void {
+pub fn drawTexture(ptr: *anyopaque, texture: Texture, x: i17, y: i17, width: u16, height: u16) !void {
     if (texture.backend != .OpenGL) {
         return error.BackendMismatch;
     }
 
     const self = @as(*OpenGLSurface, @ptrCast(@alignCast(ptr)));
 
+    const width_scale = @as(f32, @floatFromInt(self.width)) / 2;
+    const height_scale = @as(f32, @floatFromInt(self.height)) / 2;
+    const start_x = (@as(gl.Float, @floatFromInt(x)) / width_scale) - 1;
+    const start_y = (@as(gl.Float, @floatFromInt(y)) / height_scale) - 1;
+    const end_x = start_x + (@as(gl.Float, @floatFromInt(width)) / width_scale);
+    const end_y = start_y + (@as(gl.Float, @floatFromInt(height)) / height_scale);
+
     gl.bindBuffer(gl.ARRAY_BUFFER, self.vertex_buffer);
     defer gl.bindBuffer(gl.ARRAY_BUFFER, 0);
 
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, 24 * @sizeOf(gl.Float), &[_]gl.Float{
-      -0.5, -0.5, 0.0, 0.0,
-      -0.5,  0.5, 0.0, 1.0,
-       0.5, -0.5, 1.0, 0.0,
+        start_x, start_y, 0.0, 0.0,
+        start_x, end_y,   0.0, 1.0,
+        end_x,   start_y, 1.0, 0.0,
 
-      -0.5,  0.5, 0.0, 1.0,
-       0.5, -0.5, 1.0, 0.0,
-       0.5,  0.5, 1.0, 1.0,
-
-//      -0.5, -0.5,  0.0,  0.0, // Bottom Left
-//       0.5, -0.5,  1.0,  0.0, // Bottom Right
-//       0.5,  0.5,  1.0,  1.0, // Top Right
-//
-//       0.5,  0.5,  1.0,  1.0, // Top Right
-//      -0.5,  0.5,  0.0,  1.0, // Top Left
-//      -0.5, -0.5,  0.0,  0.0  // Bottom Left
-//
-//        -0.5, -0.5,  0.0, 0.0, // Bottom Left
-//         0.5, -0.5,  1.0, 0.0, // Bottom Right
-//         0.5,  0.5,  1.0, 1.0, // Top Right
-//        -0.5,  0.5,  0.0, 1.0  // Top Left
-    }); 
+        start_x, end_y,   0.0, 1.0,
+        end_x,   start_y, 1.0, 0.0,
+        end_x,   end_y,   1.0, 1.0,
+    });
 
     gl.viewport(0, 0, @as(gl.Sizei, @intCast(self.width)), @as(gl.Sizei, @intCast(self.height)));
     gl.bindFramebuffer(gl.FRAMEBUFFER, self.buffer);
@@ -170,10 +197,7 @@ pub fn drawTexture(ptr: *anyopaque, texture: Texture, _: i17, _: i17, _: u16, _:
     gl.uniform1i(gl.getUniformLocation(context.texture_program, "textureSampler"), 0);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, @as(*OpenGLTexture, @ptrCast(@alignCast(texture.unmanaged))).texture);
-    // gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, &self.index_buffer);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-    std.debug.print("Error: {}\n", .{gl.getError()});
 }
 
 // Read the surface.

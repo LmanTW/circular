@@ -3,7 +3,9 @@ const std = @import("std");
 const Surface = @import("../../../graphic/Surface.zig");
 const Beatmap = @import("../../formats/Beatmap.zig");
 const video = @import("../../../graphic/video.zig");
+const Color = @import("../../../graphic/Color.zig");
 const Replay = @import("../../formats/Replay.zig");
+const Playfield = @import("../../Playfield.zig");
 const Replayer = @import("../../Replayer.zig");
 
 const ManiaReplayer = @This();
@@ -55,7 +57,12 @@ pub fn deinit(ptr: *anyopaque) void {
 }
 
 // Load a difficulty.
+// > [difficulty] is no longer required after loaded.
 pub fn loadDifficulty(ptr: *anyopaque, difficulty: *Beatmap.Difficulty) !void {
+    if (difficulty.parseField(u4, "General.Mode", 0) != 3) {
+        return error.RulesetMismatch;
+    }
+
     const self = @as(*ManiaReplayer, @ptrCast(@alignCast(ptr)));
 
     if (self.objects) |objects| {
@@ -122,6 +129,10 @@ pub fn loadDifficulty(ptr: *anyopaque, difficulty: *Beatmap.Difficulty) !void {
 
 // Load a replay.
 pub fn loadReplay(ptr: *anyopaque, replay: *Replay) !void {
+    if (replay.ruleset != .Mania) {
+        return error.RulesetMismatch;
+    }
+
     const self = @as(*ManiaReplayer, @ptrCast(@alignCast(ptr)));
 
     if (self.objects == null) {
@@ -192,6 +203,21 @@ pub fn loadReplay(ptr: *anyopaque, replay: *Replay) !void {
 }
 
 // Render a frame.
-pub fn render(_: *anyopaque, _: *Surface, _: *video.Encoder, _: u64) !void {
-    
+pub fn render(ptr: *anyopaque, surface: *Surface, timestamp: u64) !void {
+    const self = @as(*ManiaReplayer, @ptrCast(@alignCast(ptr)));
+
+    if (self.objects == null) {
+        return error.BeatmapNotLoaded;
+    }
+
+    var playfield = try Playfield.init(surface, @as(u16, @intCast(self.columns)) * 32, 256);
+    try playfield.fill(Color.init(0, 0, 0, 1));
+
+    for (self.objects.?) |object| {
+        const abs = @abs(object.start - @as(i64, @intCast(timestamp))); 
+
+        if (timestamp > object.start and abs < 256) {
+            try playfield.drawRectangle(Color.init(255, 255, 255, 1), object.column * 32, @as(i17, @intCast(@divFloor(abs, 2))), 32, 16, null, null);
+        }
+    }
 }

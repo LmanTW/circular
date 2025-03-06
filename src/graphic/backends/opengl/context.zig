@@ -7,6 +7,7 @@ var context = @as(?Window, null);
 var dependcies = @as(usize, 0);
 
 pub var texture_program = @as(gl.Uint, undefined);
+pub var fill_program = @as(gl.Uint, undefined);
 
 // Initialize the context.
 pub fn init() !void {
@@ -23,6 +24,7 @@ pub fn init() !void {
         try opengl.loadCoreProfile(glfw.getProcAddress, 4, 0);
 
         texture_program = try createProgram(@embedFile("./shaders/texture.vertex"), @embedFile("./shaders/texture.fragment"));
+        fill_program = try createProgram(@embedFile("./shaders/fill.vertex"), @embedFile("./shaders/fill.fragment"));
     }
 
     dependcies += 1;
@@ -34,6 +36,7 @@ pub fn deinit() void {
 
     if (dependcies == 0) {
         gl.deleteProgram(texture_program);
+        gl.deleteProgram(fill_program);
 
         context.?.destory();
         glfw.terminate();
