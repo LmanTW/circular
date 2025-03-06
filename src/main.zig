@@ -64,30 +64,25 @@ pub fn main() !void {
         application.interface.log(.Complete, "Successfully initialized the video encoder!", .{});
         application.interface.log(.Running, "Initializing the replayer...", .{});
 
-        var replayer = try application.initReplayer(replay.ruleset);
+        var replayer = try application.initReplayer(&surface, replay.ruleset);
         defer replayer.deinit();
 
         try replayer.loadDifficulty(&difficulty);
         try replayer.loadReplay(&replay);
+        try replayer.loadSkin(&skin);
 
         application.interface.log(.Complete, "Successfully initialized the replayer!", .{});
         application.interface.blank();
-
-        const image = try allocator.dupe(u8, @embedFile("./game/assets/lazer.png"));
-        defer allocator.free(image);
-
-        var texture = try Texture.init(surface.backend, image, allocator);
-        defer texture.deinit();
 
         const start = std.time.milliTimestamp();
 
         const buffer = try allocator.alloc(u8, (@as(u64, @intCast(surface.width)) * surface.height) * 3);
         defer allocator.free(buffer);
 
-        for (1..1024) |frame| {
+        for (1..2048) |frame| {
             const timestamp = @as(u64, @intFromFloat((@as(f32, @floatFromInt(frame)) / @as(f32, @floatFromInt(encoder.fps))) * 1000));
 
-            try replayer.render(&surface, timestamp);
+            try replayer.render(timestamp);
 
             try surface.read(.RGB, buffer);
             try encoder.addFrame(buffer);
@@ -301,6 +296,10 @@ const Application = struct {
 
     // Initialize the encoder.
     pub fn initEncoder(self: *Application) !video.Encoder {
+        self.interface.log(.Debug, "FPS:    {}", .{self.options.fps});
+        self.interface.log(.Debug, "Width:  {}", .{self.options.width});
+        self.interface.log(.Debug, "Height: {}", .{self.options.height});
+
         return video.Encoder.init(self.options.output, .{
             .fps = self.options.fps,
             .width = self.options.width,
@@ -317,9 +316,9 @@ const Application = struct {
     }
 
     // Initialize the replayer.
-    pub fn initReplayer(self: *Application, ruleset: Replay.Ruleset) !Replayer {
+    pub fn initReplayer(self: *Application, surface: *Surface, ruleset: Replay.Ruleset) !Replayer {
         switch (ruleset) {
-            .Mania => return try Replayer.init(.Mania, self.allocator),
+            .Mania => return try Replayer.init(.Mania, surface, self.allocator),
 
             else => {
                 self.interface.log(.Error, "Unsupported ruleset: \"{s}\"", .{@tagName(ruleset)});

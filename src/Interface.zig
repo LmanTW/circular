@@ -127,7 +127,7 @@ pub fn log(self: *Interface, kind: Kind, comptime fmt: []const u8, args: anytype
             .Error =>    self.print(" \x1B[31m[ Error    ]: {s}\x1B[0m\n", .{content}),
 
             .Running =>  self.print(" \x1B[39m[ Running  ]: {s}\x1B[0m\n", .{content}),
-            .Progress => self.print(" \x1B[90m[ Progress ]: {s}\x1B[0m\n", .{content}),
+            .Progress => self.print(" \x1B[39m[ Progress ]: {s}\x1B[0m\n", .{content}),
             .Complete => self.print(" \x1B[32m[ Complete ]: {s}\x1B[0m\n", .{content}),
 
             .Debug => {

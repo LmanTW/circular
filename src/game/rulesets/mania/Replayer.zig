@@ -7,13 +7,17 @@ const Color = @import("../../../graphic/Color.zig");
 const Replay = @import("../../formats/Replay.zig");
 const Playfield = @import("../../Playfield.zig");
 const Replayer = @import("../../Replayer.zig");
+const Skin = @import("../../formats/Skin.zig");
+const Textures = @import("../../Textures.zig");
+const judgement = @import("./judgement.zig");
 
 const ManiaReplayer = @This();
 
 allocator: std.mem.Allocator,
-objects: ?[]Object,
+playfield: Playfield,
 
-columns: u8,
+columns: ?u8,
+objects: ?[]Object,
 
 // The vtable.
 pub const VTable = Replayer.VTable{
@@ -21,12 +25,13 @@ pub const VTable = Replayer.VTable{
 
     .loadDifficulty = loadDifficulty,
     .loadReplay = loadReplay,
+    .loadSkin = loadSkin,
 
     .render = render
 };
 
 // The object.
-// > If [end] is not <null>, it means the object is a "hold".
+// > If [end] is <null>, it means the object is a "note". Otherwise "hold".
 pub const Object = struct {
     column: u8,
 
@@ -38,18 +43,21 @@ pub const Object = struct {
 };
 
 // Initialize a replayer.
-pub fn init(allocator: std.mem.Allocator) !ManiaReplayer {
+pub fn init(surface: *Surface, allocator: std.mem.Allocator) !ManiaReplayer {
     return ManiaReplayer{
         .allocator = allocator,
-        .objects = null,
+        .playfield = Playfield.init(surface, 1, 1, allocator),
 
-        .columns = 0
+        .columns = null,
+        .objects = null
     };
 }
 
 // Deinitialize the replayer.
 pub fn deinit(ptr: *anyopaque) void {
     const self = @as(*ManiaReplayer, @ptrCast(@alignCast(ptr)));
+
+    self.playfield.deinit();
 
     if (self.objects) |objects| {
         self.allocator.free(objects);
@@ -87,7 +95,11 @@ pub fn loadDifficulty(ptr: *anyopaque, difficulty: *Beatmap.Difficulty) !void {
             return error.IncompleteObject;
         }
 
-        const column = std.math.clamp(@as(u4, @intFromFloat(@floor(try std.fmt.parseFloat(f32, x.?) * (@as(f32, @floatFromInt(self.columns)) / 512)))) , 0, self.columns - 1);
+        const column = std.math.clamp(@as(u4, @intFromFloat(@floor(try std.fmt.parseFloat(f32, x.?) * (@as(f32, @floatFromInt(self.columns.?)) / 512)))) , 0, self.columns.? - 1);
+
+        // Resize the playfield and clear the textures.
+        self.playfield.resize(@as(u16, @intCast(self.columns.?)) * 32, 384);
+        self.playfield.textures.clear();
 
         switch (try std.fmt.parseInt(u8, kind.?, 10)) {
             1 => {
@@ -128,6 +140,7 @@ pub fn loadDifficulty(ptr: *anyopaque, difficulty: *Beatmap.Difficulty) !void {
 }
 
 // Load a replay.
+// > [replay] is no longer required after loaded.
 pub fn loadReplay(ptr: *anyopaque, replay: *Replay) !void {
     if (replay.ruleset != .Mania) {
         return error.RulesetMismatch;
@@ -135,89 +148,66 @@ pub fn loadReplay(ptr: *anyopaque, replay: *Replay) !void {
 
     const self = @as(*ManiaReplayer, @ptrCast(@alignCast(ptr)));
 
-    if (self.objects == null) {
+    if (self.columns == null or self.objects == null) {
         return error.BeatmapNotLoaded;
     }
 
-    var timestamp = @as(i64, 0);
-    var start = @as(u64, 0);
+    try judgement.judge(self.columns.?, self.objects.?, replay);
+}
 
-    var previous_columns = @as(?u16, null);
+// Load a skin into the texture pool.
+// > [skin] is no longer required after loaded.
+pub fn loadSkin(ptr: *anyopaque, skin: *Skin) !void {
+    const self = @as(*ManiaReplayer, @ptrCast(@alignCast(ptr)));
 
-    for (replay.frames) |frame| {
-        const columns = @as(u16, @intFromFloat(@trunc(frame.x)));
-
-        for (0..self.columns) |column| {
-            for (self.objects.?[start..]) |*object| {
-                if (object.column == column) {
-                    if (object.end == null) {
-                        // The object is a "note". 
-
-                        if (object.press == null) {
-                            if (columns & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and @abs(timestamp - object.start) < 151) {
-                                object.press = timestamp;
-
-                                start += 1;
-
-                                break;
-                            }
-                        } 
-
-                        if (timestamp > object.start + 151) {
-                            start += 1;
-
-                            break;
-                        }
-                    } else {
-                        // The object is a "hold".
-
-                        if (object.press == null) {
-                            if (columns & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and @abs(timestamp - object.start) < 151) {
-                                object.press = timestamp;
-                            }
-                        } else if (object.release == null) {
-                            if (previous_columns.? & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and columns & (@as(u32, 1) << @as(u5, @intCast(column))) == 0) {
-                                if (@abs(timestamp - object.end.?) < 151) {
-                                    object.release = timestamp;
-
-                                    start += 1;
-
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (timestamp > object.end.? + 151) {
-                            start += 1;
-
-                            break;
-                        }
-                    }
-                } 
-            }
-        }
-
-        timestamp += frame.w;
-        previous_columns = columns;
+    if (self.columns == null or self.objects == null) {
+        return error.BeatmapNotLoaded;
     }
+
+    var buffer = @as([64]u8, undefined);
+
+    // std.debug.print("KeyImage0: {s}\n", .{});
+
+    try self.playfield.textures.load("mania-note1", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.NoteImage1", .{self.columns.?}), "mania-note1")) orelse @constCast(@embedFile("../../assets/default/mania-note1@2x.png")));
+    try self.playfield.textures.load("mania-note2", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.NoteImage2", .{self.columns.?}), "mania-note2")) orelse @constCast(@embedFile("../../assets/default/mania-note2@2x.png")));
+    try self.playfield.textures.load("mania-noteS", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.NoteImageS", .{self.columns.?}), "mania-noteS")) orelse @constCast(@embedFile("../../assets/default/mania-noteS@2x.png")));
+
+//    try self.playfield.textures.load("mania-key1", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.mania-key1", .{self.columns.?}), "mania-key1")) orelse @constCast(@embedFile("../../assets/default/mania-key1@2x.png")));
+//    try self.playfield.textures.load("mania-key1-hold", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.mania-key1", .{self.columns.?}), "mania-key1D")) orelse @constCast(@embedFile("../../assets/default/mania-key1D@2x.png")));
+//    try self.playfield.textures.load("mania-key2", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.mania-key2", .{self.columns.?}), "mania-key2")) orelse @constCast(@embedFile("../../assets/default/mania-key2@2x.png")));
+//    try self.playfield.textures.load("mania-key2-hold", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.mania-key2", .{self.columns.?}), "mania-key2D")) orelse @constCast(@embedFile("../../assets/default/mania-key2D@2x.png")));
 }
 
 // Render a frame.
-pub fn render(ptr: *anyopaque, surface: *Surface, timestamp: u64) !void {
+pub fn render(ptr: *anyopaque, timestamp: u64) !void {
     const self = @as(*ManiaReplayer, @ptrCast(@alignCast(ptr)));
 
-    if (self.objects == null) {
+    if (self.columns == null or self.objects == null) {
         return error.BeatmapNotLoaded;
     }
 
-    var playfield = try Playfield.init(surface, @as(u16, @intCast(self.columns)) * 32, 256);
-    try playfield.fill(Color.init(0, 0, 0, 1));
+    try self.playfield.clear();
 
     for (self.objects.?) |object| {
-        const abs = @abs(object.start - @as(i64, @intCast(timestamp))); 
+        if (object.end == null) {
+            // The object is a "note".
 
-        if (timestamp > object.start and abs < 256) {
-            try playfield.drawRectangle(Color.init(255, 255, 255, 1), object.column * 32, @as(i17, @intCast(@divFloor(abs, 2))), 32, 16, null, null);
+            if (timestamp < object.press orelse object.start) {
+                const y = (@as(i64, @intCast(self.playfield.height)) - 32) - @divFloor(object.start - @as(i64, @intCast(timestamp)), 2);
+
+                if (y > -32 and y < self.playfield.height) {
+                    try self.playfield.drawTexture("mania-note1", object.column * 32, @as(i17, @intCast(y)), 32, null, null, null);
+                }
+            }
+        } else {
+            // The object is a "hold".
+
+            const start_y = (@as(i64, @intCast(self.playfield.height)) - 32) - if (object.press != null and timestamp > object.press.?) 0 else @divFloor(object.start - @as(i64, @intCast(timestamp)), 2);
+            const end_y = (@as(i64, @intCast(self.playfield.height)) - 32) - @divFloor(object.end.? - @as(i64, @intCast(timestamp)), 2);
+
+            if (start_y > -32 and end_y < self.playfield.height and (start_y > end_y)) {
+                try self.playfield.drawRectangle(Color.init(255, 255, 255, 1), object.column * 32, @as(i17, @intCast(start_y)), 32, @as(u16, @intCast(start_y - end_y)), .BottomLeft, null);
+            }
         }
     }
 }

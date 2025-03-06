@@ -1,20 +1,25 @@
+const std = @import("std");
+
 const Surface = @import("../graphic/Surface.zig");
 const Texture = @import("../graphic/Texture.zig");
 const Color = @import("../graphic/Color.zig");
+const Textures = @import("./Textures.zig");
 
 const Playfield = @This();
 
+allocator: std.mem.Allocator,
+textures: Textures,
+
 surface: *Surface,
+scale: f32,
 
 width: u16,
 height: u16,
 x: u16,
 y: u16,
 
-scale: f32,
-
 // Initialize a playfield.
-pub fn init(surface: *Surface, width: u16, height: u16) !Playfield {
+pub fn init(surface: *Surface, width: u16, height: u16, allocator: std.mem.Allocator) Playfield {
     const scale = @min(
         @as(f32, @floatFromInt(surface.width)) / @as(f32, @floatFromInt(width)),
         @as(f32, @floatFromInt(surface.height)) / @as(f32, @floatFromInt(height)) 
@@ -24,23 +29,46 @@ pub fn init(surface: *Surface, width: u16, height: u16) !Playfield {
     const playfield_height = @as(u16, @intFromFloat(@as(f32, @floatFromInt(height)) * scale));
 
     return Playfield{
+        .allocator = allocator,
+        .textures = Textures.init(surface.backend, allocator),
+        
         .surface = surface,
+        .scale = scale,
 
         .x = @divFloor(surface.width, 2) - @divFloor(playfield_width, 2),
         .y = @divFloor(surface.height, 2) - @divFloor(playfield_height, 2),
         .width = width,
-        .height = height,
-
-        .scale = scale
+        .height = height
     };
 }
 
-// Clear the surface.
+// Deinitialize the playfield.
+pub fn deinit(self: *Playfield) void {
+    self.textures.deinit();
+}
+
+// Resize the playfield.
+pub fn resize(self: *Playfield, width: u16, height: u16) void {
+    self.scale = @min(
+        @as(f32, @floatFromInt(self.surface.width)) / @as(f32, @floatFromInt(width)),
+        @as(f32, @floatFromInt(self.surface.height)) / @as(f32, @floatFromInt(height)) 
+    );
+
+    const playfield_width = @as(u16, @intFromFloat(@as(f32, @floatFromInt(width)) * self.scale));
+    const playfield_height = @as(u16, @intFromFloat(@as(f32, @floatFromInt(height)) * self.scale));
+
+    self.x = @divFloor(self.surface.width, 2) - @divFloor(playfield_width, 2);
+    self.y = @divFloor(self.surface.height, 2) - @divFloor(playfield_height, 2);
+    self.width = width;
+    self.height = height;
+}
+
+// Clear the playfield.
 pub fn clear(self: *Playfield) !void {
     try self.surface.clear();
 }
 
-// Fill the surface.
+// Fill the playfield.
 pub fn fill(self: *Playfield, color: Color) !void {
     try self.surface.fill(color);
 }
@@ -55,20 +83,49 @@ pub fn drawRectangle(self: *Playfield, color: Color, x: i17, y: i17, width: u16,
     try self.surface.drawRectangle(
         color,
         self.x + position[0],
-        self.y + position[0],
+        self.y + position[1],
         @as(u16, @intFromFloat(@as(f32, @floatFromInt(width)) * self.scale)),
         @as(u16, @intFromFloat(@as(f32, @floatFromInt(height)) * self.scale))
     );
 }
 
 // Draw a texture.
-pub fn drawTexture(self: *Playfield, texture: Texture, x: i17, y: i17, width: u16, height: u16, origin: ?Alignment, anchor: ?Alignment) !void {
-    const position = self.calculatePosition(x, y, width, height, origin orelse Alignment.TopLeft, anchor orelse Alignment.TopLeft);
+pub fn drawTexture(self: *Playfield, name: []const u8, x: i17, y: i17, width: ?u16, height: ?u16, origin: ?Alignment, anchor: ?Alignment) !void {
+    if (self.textures.get(name)) |texture| {
+        if (width == null and height == null) {
+            return error.NoSizeProvided;
+        }
 
-    position[0] += self.x;
-    position[1] += self.y;
+        var scaled_width = @as(u16, undefined);
+        var scaled_height = @as(u16, undefined);
 
-    try self.surface.drawTexture(texture, position[0], position[1], width, height);
+        if (width == null) {
+            const scale = @as(f32, @floatFromInt(texture.width)) / @as(f32, @floatFromInt(texture.height));
+
+            scaled_width = @as(u16, @intFromFloat(@as(f32, @floatFromInt(height.?)) * scale));
+            scaled_height = height.?;
+        } else if (height == null) {
+            const scale = @as(f32, @floatFromInt(texture.height)) / @as(f32, @floatFromInt(texture.width));
+
+            scaled_width = width.?;
+            scaled_height = @as(u16, @intFromFloat(@as(f32, @floatFromInt(width.?)) * scale));
+        }
+
+        var position = self.calculatePosition(x, y, scaled_width, scaled_height, origin orelse Alignment.TopLeft, anchor orelse Alignment.TopLeft);
+
+        position[0] = @as(i17, @intFromFloat(@as(f32, @floatFromInt(position[0])) * self.scale));
+        position[1] = @as(i17, @intFromFloat(@as(f32, @floatFromInt(position[1])) * self.scale));
+
+        try self.surface.drawTexture(
+            texture,
+            self.x + position[0],
+            self.y + position[1],
+            @as(u16, @intFromFloat(@as(f32, @floatFromInt(scaled_width)) * self.scale)),
+            @as(u16, @intFromFloat(@as(f32, @floatFromInt(scaled_height)) * self.scale))
+        );
+    } else {
+        return error.TextureNotFound;
+    } 
 }
 
 // Calculate the position.

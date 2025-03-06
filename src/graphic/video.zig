@@ -9,9 +9,12 @@ pub const Encoder = struct {
     width: u16,
     height: u16,
     
-    filename: []const u8,
-    resolution: []const u8,
-    threads: []const u8,
+    arguments: struct {
+        filename: []const u8,
+        resolution: []const u8,
+        fps: []const u8,
+        threads: []const u8,
+    },
 
     // The options.
     pub const Options = struct {
@@ -26,10 +29,15 @@ pub const Encoder = struct {
     // Initialize an encoder.
     pub fn init(filename: []const u8, options: Encoder.Options, allocator: std.mem.Allocator) !Encoder {
         const filename_buffer = try allocator.alloc(u8, filename.len);
-        const resolution_buffer = try std.fmt.allocPrint(allocator, "{}x{}", .{options.width, options.height});
-        const threads_buffer = try std.fmt.allocPrint(allocator, "{}", .{options.threads});
         errdefer allocator.free(filename_buffer);
+
+        const resolution_buffer = try std.fmt.allocPrint(allocator, "{}x{}", .{options.width, options.height});
         errdefer allocator.free(resolution_buffer);
+
+        const fps_buffer = try std.fmt.allocPrint(allocator, "{}", .{options.fps});
+        errdefer allocator.free(resolution_buffer);
+
+        const threads_buffer = try std.fmt.allocPrint(allocator, "{}", .{options.threads});
         errdefer allocator.free(threads_buffer);
 
         @memcpy(filename_buffer, filename);
@@ -39,7 +47,7 @@ pub const Encoder = struct {
             "-f", "rawvideo",
             "-pix_fmt", "rgb24",
             "-s", resolution_buffer,
-            "-r", "60",
+            "-r", fps_buffer,
             "-i", "-",
             "-vcodec", "libx264",
             "-pix_fmt", "yuv420p",
@@ -62,17 +70,21 @@ pub const Encoder = struct {
             .width = options.width,
             .height = options.height,
 
-            .filename = filename_buffer,
-            .resolution = resolution_buffer,
-            .threads = threads_buffer
+            .arguments = .{
+                .filename = filename_buffer,
+                .resolution = resolution_buffer,
+                .fps = fps_buffer,
+                .threads = threads_buffer
+            }
         };
     }
 
     // Deinitialize the encoder.
     pub fn deinit(self: *Encoder) void {
-        self.allocator.free(self.filename);
-        self.allocator.free(self.resolution);
-        self.allocator.free(self.threads);
+        self.allocator.free(self.arguments.filename);
+        self.allocator.free(self.arguments.resolution);
+        self.allocator.free(self.arguments.fps);
+        self.allocator.free(self.arguments.threads);
     }
 
     // Add a frame to the video.

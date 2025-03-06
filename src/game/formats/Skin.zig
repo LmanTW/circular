@@ -95,7 +95,7 @@ pub fn initFromMemory(buffer: []u8, allocator: std.mem.Allocator) !Skin {
                         var name = @as([]const u8, undefined);
                         
                         if (std.mem.eql(u8, current_section.?, "Mania")) {
-                            name = try std.fmt.allocPrint(allocator, "Mania{}.{s}", .{current_keys.?, key});
+                            name = try std.fmt.allocPrint(allocator, "Mania{}K.{s}", .{current_keys.?, key});
                         } else {
                             name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{current_section.?, key});
                         }
@@ -177,4 +177,16 @@ pub fn parseOptionRange(self: *Skin, comptime T: type, name: []const u8, min: ?T
     } else {
         return default;
     }
+}
+
+// Get an image.
+pub fn getImage(self: *Skin, name: []const u8) !?[]u8 {
+    var buffer = @as([64]u8, undefined);
+
+    if (self.resources.get(try std.fmt.bufPrint(&buffer, "{s}.png", .{name}))) |image|
+        return image;
+    if (self.resources.get(try std.fmt.bufPrint(&buffer, "{s}@2x.png", .{name}))) |image|
+        return image;
+
+    return null;
 }
