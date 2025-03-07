@@ -92,21 +92,22 @@ pub fn initFromMemory(buffer: []u8, allocator: std.mem.Allocator) !Skin {
                             current_keys = try std.fmt.parseInt(u8, value, 10);
                         }
                     } else {
-                        var name = @as([]const u8, undefined);
+                        var name_buffer = @as([]const u8, undefined);
                         
                         if (std.mem.eql(u8, current_section.?, "Mania")) {
-                            name = try std.fmt.allocPrint(allocator, "Mania{}K.{s}", .{current_keys.?, key});
+                            name_buffer = try std.fmt.allocPrint(allocator, "Mania{}K.{s}", .{current_keys.?, key});
                         } else {
-                            name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{current_section.?, key});
-                        }
+                            name_buffer = try std.fmt.allocPrint(allocator, "{s}.{s}", .{current_section.?, key});
+                        } 
 
-                        errdefer allocator.free(name);
+                        errdefer allocator.free(name_buffer);
 
-                        if (fields.contains(name)) {
-                            allocator.free(fields.fetchRemove(name).?.key);
-                        }
+                        if (fields.contains(name_buffer)) {
+                            allocator.free(fields.fetchRemove(name_buffer).?.key);
+                        } 
 
-                        try fields.put(name, value);
+                        // [value] does not need to be copied since it's already owned by [resources].
+                        try fields.put(name_buffer, value);
                     } 
                 }
             }
@@ -126,7 +127,7 @@ pub fn deinit(self: *Skin) void {
     var resource_iterator = self.resources.iterator();
 
     while (field_iterator.next()) |entry| {
-        self.allocator.free(entry.key_ptr.*);
+         self.allocator.free(entry.key_ptr.*);
     }
 
     while (resource_iterator.next()) |entry| {
@@ -181,11 +182,15 @@ pub fn parseOptionRange(self: *Skin, comptime T: type, name: []const u8, min: ?T
 
 // Get an image.
 pub fn getImage(self: *Skin, name: []const u8) !?[]u8 {
-    var buffer = @as([64]u8, undefined);
+    var name_buffer = @as([256]u8, undefined);
+    var full_buffer = @as([256]u8, undefined);
 
-    if (self.resources.get(try std.fmt.bufPrint(&buffer, "{s}.png", .{name}))) |image|
+    // Path might be using backslash.
+    _ = std.mem.replace(u8, name, "\\", "/", &name_buffer);
+
+    if (self.resources.get(try std.fmt.bufPrint(&full_buffer, "{s}.png", .{name_buffer[0..name.len]}))) |image|
         return image;
-    if (self.resources.get(try std.fmt.bufPrint(&buffer, "{s}@2x.png", .{name}))) |image|
+    if (self.resources.get(try std.fmt.bufPrint(&full_buffer, "{s}@2x.png", .{name_buffer[0..name.len]}))) |image|
         return image;
 
     return null;

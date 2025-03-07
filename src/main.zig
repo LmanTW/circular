@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const options = @import("options");
 const std = @import("std");
 
@@ -7,6 +8,7 @@ pub const Skin = @import("./game/formats/Skin.zig");
 
 const Surface = @import("./graphic/Surface.zig");
 const Texture = @import("./graphic/Texture.zig");
+const Renderer = @import("./game/Renderer.zig");
 const Replayer = @import("./game/Replayer.zig");
 const Interface = @import("./Interface.zig");
 const Color = @import("./graphic/Color.zig");
@@ -52,8 +54,8 @@ pub fn main() !void {
         application.interface.log(.Complete, "Successfully loaded the skin!", .{});
         application.interface.log(.Running, "Initializing the renderer...", .{});
 
-        var surface = try application.initSurface();
-        defer surface.deinit();
+        var renderer = try application.initRenderer();
+        defer renderer.deinit();
 
         application.interface.log(.Complete, "Successfully initialized the renderer!", .{});
         application.interface.log(.Running, "Initializing the video encoder...", .{});
@@ -64,27 +66,27 @@ pub fn main() !void {
         application.interface.log(.Complete, "Successfully initialized the video encoder!", .{});
         application.interface.log(.Running, "Initializing the replayer...", .{});
 
-        var replayer = try application.initReplayer(&surface, replay.ruleset);
+        var replayer = try application.initReplayer(replay.ruleset);
         defer replayer.deinit();
 
         try replayer.loadDifficulty(&difficulty);
         try replayer.loadReplay(&replay);
-        try replayer.loadSkin(&skin);
+        try replayer.loadSkin(&skin, &renderer);
 
         application.interface.log(.Complete, "Successfully initialized the replayer!", .{});
         application.interface.blank();
 
         const start = std.time.milliTimestamp();
 
-        const buffer = try allocator.alloc(u8, (@as(u64, @intCast(surface.width)) * surface.height) * 3);
+        const buffer = try allocator.alloc(u8, (@as(u64, @intCast(renderer.surface.width)) * renderer.surface.height) * 3);
         defer allocator.free(buffer);
 
         for (1..2048) |frame| {
             const timestamp = @as(u64, @intFromFloat((@as(f32, @floatFromInt(frame)) / @as(f32, @floatFromInt(encoder.fps))) * 1000));
 
-            try replayer.render(timestamp);
+            try replayer.render(&renderer, timestamp);
 
-            try surface.read(.RGB, buffer);
+            try renderer.surface.read(.RGB, buffer);
             try encoder.addFrame(buffer);
         }
 
@@ -274,8 +276,8 @@ const Application = struct {
         };
     }
 
-    // Initialize the surface.
-    pub fn initSurface(self: *Application) !Surface {
+    // Initialize the renderer.
+    pub fn initRenderer(self: *Application) !Renderer {
         var backend = @as(Surface.Backend, undefined);
 
         if (std.mem.eql(u8, self.options.backend, "basic"))
@@ -286,7 +288,7 @@ const Application = struct {
         self.interface.log(.Debug, "Basic:  {s}", .{if (options.backend_basic) "Available" else "Unavailable"});
         self.interface.log(.Debug, "OpenGL: {s}", .{if (options.backend_opengl) "Available" else "Unavailable"});
 
-        return Surface.init(backend, self.options.width, self.options.height, self.options.threads, self.allocator) catch {
+        return Renderer.init(backend, self.options.width, self.options.height, self.options.threads, self.allocator) catch {
             self.interface.log(.Error, "Failed to initialize the renderer.", .{});
             self.interface.blank();
 
@@ -316,9 +318,9 @@ const Application = struct {
     }
 
     // Initialize the replayer.
-    pub fn initReplayer(self: *Application, surface: *Surface, ruleset: Replay.Ruleset) !Replayer {
+    pub fn initReplayer(self: *Application, ruleset: Replay.Ruleset) !Replayer {
         switch (ruleset) {
-            .Mania => return try Replayer.init(.Mania, surface, self.allocator),
+            .Mania => return try Replayer.init(.Mania, self.allocator),
 
             else => {
                 self.interface.log(.Error, "Unsupported ruleset: \"{s}\"", .{@tagName(ruleset)});

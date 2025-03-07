@@ -3,6 +3,10 @@
     .version = "0.0.0",
 
     .dependencies = .{
+        .zstbi = .{
+            .url = "git+https://github.com/zig-gamedev/zstbi.git#4fce0ee7ca94bd42536c136d9a369e647bc55b14",
+            .hash = "zstbi-0.10.0-AAAAAL2VBwCAQYZQ7se9iRdJUp_RPJmhGBgfrIcVA1_c",
+        },
         .zglfw = .{
             .url = "git+https://github.com/zig-gamedev/zglfw.git#4d04fdac888c0f6c1c858ba343d33b19aa499cef",
             .hash = "zglfw-0.10.0-dev-AAAAAHCZIQDKD8WFiNvMOOz7fasj8oG6Vajcdtbv0yr9",
@@ -14,11 +18,7 @@
         .system_sdk = .{
             .url = "git+https://github.com/zig-gamedev/system_sdk.git#d1e724748d15cfcbf50c45ec7c7019688d45b16a",
             .hash = "system_sdk-0.3.0-dev-AAAAAFAaaAJHqSmMTJ3UM4nUGNaCbUabGSJGuglEEClk",
-        },
-        .zstbi = .{
-            .url = "git+https://github.com/zig-gamedev/zstbi.git#4fce0ee7ca94bd42536c136d9a369e647bc55b14",
-            .hash = "zstbi-0.10.0-AAAAAL2VBwCAQYZQ7se9iRdJUp_RPJmhGBgfrIcVA1_c",
-        },
+        }
     },
 
     .paths = .{
@@ -27,5 +27,6 @@
         "src"
     },
 
+    .minimum_zig_version = "0.14.0",
     .fingerprint = 0x62d1f84c3b35f140
 }

@@ -18,7 +18,7 @@ pub fn judge(columns: u8, objects: []Replayer.Object, replay: *Replay) !void {
                         // The object is a "note". 
 
                         if (object.press == null) {
-                            if (column_bitmap & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and @abs(timestamp - object.start) <= 151) {
+                            if (column_bitmap & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and @abs(timestamp - object.start) <= Timing.meh) {
                                 object.press = timestamp;
 
                                 start += 1;
@@ -27,7 +27,7 @@ pub fn judge(columns: u8, objects: []Replayer.Object, replay: *Replay) !void {
                             }
                         } 
 
-                        if (timestamp > object.start + 151) {
+                        if (timestamp > object.start + Timing.meh) {
                             start += 1;
 
                             break;
@@ -36,12 +36,12 @@ pub fn judge(columns: u8, objects: []Replayer.Object, replay: *Replay) !void {
                         // The object is a "hold".
 
                         if (object.press == null) {
-                            if (column_bitmap & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and @abs(timestamp - object.start) <= 151) {
+                            if (column_bitmap & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and @abs(timestamp - object.start) <= Timing.meh) {
                                 object.press = timestamp;
                             }
                         } else if (object.release == null) {
                             if (previous_columns_bitmap.? & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and column_bitmap & (@as(u32, 1) << @as(u5, @intCast(column))) == 0) {
-                                if (@abs(timestamp - object.end.?) < 151) {
+                                if (@abs(timestamp - object.end.?) < Timing.meh) {
                                     object.release = timestamp;
 
                                     start += 1;
@@ -51,7 +51,7 @@ pub fn judge(columns: u8, objects: []Replayer.Object, replay: *Replay) !void {
                             }
                         }
 
-                        if (timestamp > object.end.? + 151) {
+                        if (timestamp > object.end.? + Timing.meh) {
                             start += 1;
 
                             break;
@@ -65,3 +65,13 @@ pub fn judge(columns: u8, objects: []Replayer.Object, replay: *Replay) !void {
         previous_columns_bitmap = column_bitmap;
     }
 }
+
+// The timing.
+pub const Timing = .{
+    .perfect = 16,
+    .great = 64,
+    .good = 97,
+    .ok = 127,
+    .meh = 151,
+    .miss = 188
+};
