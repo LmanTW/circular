@@ -22,6 +22,8 @@ pub fn init() !void {
         context.?.setCurrent();
 
         try opengl.loadCoreProfile(glfw.getProcAddress, 4, 0);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.enable(gl.BLEND);
 
         texture_program = try createProgram(@embedFile("./shaders/texture.vertex"), @embedFile("./shaders/texture.fragment"));
         fill_program = try createProgram(@embedFile("./shaders/fill.vertex"), @embedFile("./shaders/fill.fragment"));

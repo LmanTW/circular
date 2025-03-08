@@ -121,6 +121,15 @@ pub fn initFromMemory(buffer: []u8, allocator: std.mem.Allocator) !Skin {
     };
 }
 
+// Initialize an empty skin.
+pub fn initEmpty(allocator: std.mem.Allocator) Skin {
+    return Skin{
+        .allocator = allocator,
+        .fields = std.StringHashMap([]const u8).init(allocator),
+        .resources = std.StringHashMap([]u8).init(allocator)
+    };
+}
+
 // Deinitialize the skin.
 pub fn deinit(self: *Skin) void {
     var field_iterator = self.fields.iterator();
@@ -159,25 +168,29 @@ pub fn parseField(self: *Skin, comptime T: type, name: []const u8, default: T) T
     }
 }
 
-// Parse a field with a range.
-pub fn parseOptionRange(self: *Skin, comptime T: type, name: []const u8, min: ?T, max: ?T, default: T) T {
+// Parse a list field.
+pub fn parseListField(self: *Skin, comptime T: type, comptime L: usize, name: []const u8, default: T) [L]T {
+    var list = @as([L]T, @splat(default));
+
     if (self.fields.get(name)) |value| {
-        const parsed_value = switch (@typeInfo(T)) {
-            .int => std.fmt.parseInt(T, value, 10) catch default,
-            .float => std.fmt.parseFloat(T, value, 10) catch default,
+        var item_iterator = std.mem.splitAny(u8, value, ",");
 
-            else => @compileError("Unsupported type: " ++ @typeName(T))
-        };
+        for (0..17) |index| {
+            if (item_iterator.next()) |item| {
+                list[index] = switch (@typeInfo(T)) {
+                    .bool => std.mem.eql(u8, std.mem.trim(u8, item, " "), "true"),
+                    .int => std.fmt.parseInt(T, std.mem.trim(u8, item, " "), 10) catch default,
+                    .float => std.fmt.parseFloat(T, std.mem.trim(u8, item, " "), 10) catch default,
 
-        if (min != null and parsed_value < min.?)
-            return min.?;
-        if (max != null and parsed_value > max.?)
-            return max.?;
-
-        return parsed_value;
-    } else {
-        return default;
+                    else => @compileError("Unsupported type: " ++ @typeName(T))                    
+                };
+            } else {
+                break;
+            }
+        }
     }
+
+    return list;
 }
 
 // Get an image.

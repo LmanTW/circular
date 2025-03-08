@@ -157,7 +157,10 @@ pub fn drawRectangle(ptr: *anyopaque, color: Color, x: i17, y: i17, width: u16, 
         .x = x,
         .y = y,
         .width = width,
-        .height = height
+        .height = height,
+
+        .end_x = x +| @as(i17, @intCast(width)),
+        .end_y = y +| @as(i17, @intCast(height))
     };
 
     try self.workers.assign(@as(*anyopaque, @ptrCast(&ctx)), drawRectangleTask, .{0, if (width > height) width else height});
@@ -168,15 +171,12 @@ pub fn drawRectangle(ptr: *anyopaque, color: Color, x: i17, y: i17, width: u16, 
 fn drawRectangleTask(ptr: *anyopaque, range: [2]u64) void {
     const ctx = @as(*DrawRectangleContext, @ptrCast(@alignCast(ptr)));
 
-    const end_x = ctx.x +| @as(i17, @intCast(ctx.width));
-    const end_y = ctx.y +| @as(i17, @intCast(ctx.height));
-
     if (ctx.width > ctx.height) {
         var x = ctx.x + @as(i17, @intCast(range[0]));
         var y = ctx.y;
 
-        while (x < ctx.x +| end_x) {
-            while (y < ctx.y +| end_y) {
+        while (x < ctx.end_x) {
+            while (y < ctx.end_y) {
                 ctx.surface.set(ctx.color, x, y);
 
                 y += 1;
@@ -189,8 +189,8 @@ fn drawRectangleTask(ptr: *anyopaque, range: [2]u64) void {
         var x = ctx.x;
         var y = ctx.y + @as(i16, @intCast(range[0]));
 
-        while (y < ctx.y +| end_y) {
-            while (x < ctx.x +| end_x) {
+        while (y < ctx.end_y) {
+            while (x < ctx.end_x) {
                 ctx.surface.set(ctx.color, x, y);
 
                 x += 1;
@@ -210,7 +210,10 @@ const DrawRectangleContext = struct {
     x: i17,
     y: i17,
     width: u16,
-    height: u16
+    height: u16,
+
+    end_x: i17,
+    end_y: i17
 };
 
 // Draw a texture.
@@ -228,7 +231,12 @@ pub fn drawTexture(ptr: *anyopaque, texture: Texture, x: i17, y: i17, width: u16
         .x = x,
         .y = y,
         .width = width,
-        .height = height
+        .height = height,
+
+        .end_x = x +| @as(i17, @intCast(width)),
+        .end_y = y +| @as(i17, @intCast(height)),
+        .width_scale = @as(f32, @floatFromInt(texture.width)) / @as(f32, @floatFromInt(width)),
+        .height_scale = @as(f32, @floatFromInt(texture.height)) / @as(f32, @floatFromInt(height))
     };
 
     try self.workers.assign(@as(*anyopaque, @ptrCast(&ctx)), drawTextureTask, .{0, if (width > height) width else height});
@@ -239,19 +247,14 @@ pub fn drawTexture(ptr: *anyopaque, texture: Texture, x: i17, y: i17, width: u16
 pub fn drawTextureTask(ptr: *anyopaque, range: [2]u64) void {
     const ctx = @as(*DrawTextureContext, @ptrCast(@alignCast(ptr)));
 
-    const end_x = ctx.x +| @as(i17, @intCast(ctx.width));
-    const end_y = ctx.y +| @as(i17, @intCast(ctx.height));
-    const x_scale = @as(f32, @floatFromInt(ctx.texture.width)) / @as(f32, @floatFromInt(ctx.width));
-    const y_scale = @as(f32, @floatFromInt(ctx.texture.height)) / @as(f32, @floatFromInt(ctx.height));
-
     if (ctx.width > ctx.height) {
         var surface_x = ctx.x + @as(i17, @intCast(range[0]));
         var surface_y = ctx.y;
 
-        while (surface_x < end_x) {
-            while (surface_y < end_y) {
-                const texture_x = @as(u16, @intFromFloat(@ceil(@as(f32, @floatFromInt(surface_x - ctx.x)) * x_scale)));
-                const texture_y = @as(u16, @intFromFloat(@ceil(@as(f32, @floatFromInt(surface_y - ctx.y)) * y_scale)));
+        while (surface_x < ctx.end_x) {
+            while (surface_y < ctx.end_y) {
+                const texture_x = @as(u16, @intFromFloat(@ceil(@as(f32, @floatFromInt(surface_x - ctx.x)) * ctx.width_scale)));
+                const texture_y = @as(u16, @intFromFloat(@ceil(@as(f32, @floatFromInt(surface_y - ctx.y)) * ctx.height_scale)));
                 const texture_offset = (@as(u64, @intCast(texture_y)) * 4) + texture_x;
 
                 ctx.surface.set(Color.init(
@@ -271,10 +274,10 @@ pub fn drawTextureTask(ptr: *anyopaque, range: [2]u64) void {
         var surface_x = ctx.x;
         var surface_y = ctx.y + @as(i17, @intCast(range[0]));
 
-        while (surface_y < end_y) {
-            while (surface_x < end_x) {
-                const texture_x = @as(u16, @intFromFloat(@ceil(@as(f32, @floatFromInt(surface_x - ctx.x)) * x_scale)));
-                const texture_y = @as(u16, @intFromFloat(@ceil(@as(f32, @floatFromInt(surface_y - ctx.y)) * y_scale)));
+        while (surface_y < ctx.end_y) {
+            while (surface_x < ctx.end_x) {
+                const texture_x = @as(u16, @intFromFloat(@ceil(@as(f32, @floatFromInt(surface_x - ctx.x)) * ctx.width_scale)));
+                const texture_y = @as(u16, @intFromFloat(@ceil(@as(f32, @floatFromInt(surface_y - ctx.y)) * ctx.height_scale)));
                 const texture_offset = ((@as(u64, @intCast(texture_y)) * ctx.texture.width) + texture_x) * 4;
 
                 ctx.surface.set(Color.init(
@@ -301,7 +304,12 @@ const DrawTextureContext = struct {
     x: i17,
     y: i17,
     width: u16,
-    height: u16
+    height: u16,
+
+    end_x: i17,
+    end_y: i17,
+    width_scale: f32,
+    height_scale: f32
 };
 
 // Read the surface.

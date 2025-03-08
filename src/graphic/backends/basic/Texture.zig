@@ -11,13 +11,15 @@ pixels: []u8,
 width: u16,
 height: u16,
 
+style: Texture.Style,
+
 // The vtable.
 pub const VTable = Texture.VTable{
     .deinit = deinit
 };
 
 // Initialize a texture.
-pub fn init(buffer: []u8, allocator: std.mem.Allocator) !BasicTexture {
+pub fn init(buffer: []u8, style: Texture.Style, allocator: std.mem.Allocator) !BasicTexture {
     stbi.init(allocator);
     defer stbi.deinit();
 
@@ -33,6 +35,8 @@ pub fn init(buffer: []u8, allocator: std.mem.Allocator) !BasicTexture {
             
         .width = @as(u16, @intCast(image.width)),
         .height = @as(u16, @intCast(image.height)),
+
+        .style = style
     };
 }
 

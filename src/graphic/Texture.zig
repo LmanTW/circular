@@ -21,8 +21,14 @@ pub const VTable = struct {
     deinit: *const fn(ptr: *anyopaque) void
 };
 
+// The style for the texture.
+pub const Style = struct {
+    flip_horizontal: bool = false,
+    flip_vertical: bool = false
+};
+
 // Initialize a texture.
-pub fn init(backend: Surface.Backend, buffer: []u8, allocator: std.mem.Allocator) !Texture {
+pub fn init(backend: Surface.Backend, buffer: []u8, style: Style, allocator: std.mem.Allocator) !Texture {
     switch (backend) {
         .Basic => {
             if (!comptime options.backend_basic) {
@@ -32,7 +38,7 @@ pub fn init(backend: Surface.Backend, buffer: []u8, allocator: std.mem.Allocator
             const unmanaged = try allocator.create(BasicTexture);
             errdefer allocator.destroy(unmanaged);
 
-            unmanaged.* = try BasicTexture.init(buffer, allocator);
+            unmanaged.* = try BasicTexture.init(buffer, style, allocator);
 
             return Texture{
                 .allocator = allocator,
@@ -54,7 +60,7 @@ pub fn init(backend: Surface.Backend, buffer: []u8, allocator: std.mem.Allocator
             const unmanaged = try allocator.create(OpenGLTexture);
             errdefer allocator.destroy(unmanaged);
 
-            unmanaged.* = try OpenGLTexture.init(buffer, allocator);
+            unmanaged.* = try OpenGLTexture.init(buffer, style, allocator);
 
             return Texture{
                 .allocator = allocator,

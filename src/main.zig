@@ -81,13 +81,15 @@ pub fn main() !void {
         const buffer = try allocator.alloc(u8, (@as(u64, @intCast(renderer.surface.width)) * renderer.surface.height) * 3);
         defer allocator.free(buffer);
 
-        for (1..2048) |frame| {
+        for (1..1024) |frame| {
             const timestamp = @as(u64, @intFromFloat((@as(f32, @floatFromInt(frame)) / @as(f32, @floatFromInt(encoder.fps))) * 1000));
 
             try replayer.render(&renderer, timestamp);
 
             try renderer.surface.read(.RGB, buffer);
             try encoder.addFrame(buffer);
+
+            std.debug.print("Frame: {}\n", .{frame});
         }
 
         std.debug.print("Time: {}ms\n", .{std.time.milliTimestamp() - start});
@@ -250,6 +252,10 @@ const Application = struct {
 
     // Load the skin.
     pub fn loadSkin(self: *Application, filename: []const u8) !Skin {
+        if (std.mem.eql(u8, filename, "default")) {
+            return Skin.initEmpty(self.allocator);
+        }
+
         const file = std.fs.cwd().openFile(filename, .{}) catch {
             const current_path = try std.fs.cwd().realpathAlloc(self.allocator, ".");
             const absolute_path = try std.fs.path.resolve(self.allocator, &.{current_path, filename});
@@ -298,10 +304,6 @@ const Application = struct {
 
     // Initialize the encoder.
     pub fn initEncoder(self: *Application) !video.Encoder {
-        self.interface.log(.Debug, "FPS:    {}", .{self.options.fps});
-        self.interface.log(.Debug, "Width:  {}", .{self.options.width});
-        self.interface.log(.Debug, "Height: {}", .{self.options.height});
-
         return video.Encoder.init(self.options.output, .{
             .fps = self.options.fps,
             .width = self.options.width,

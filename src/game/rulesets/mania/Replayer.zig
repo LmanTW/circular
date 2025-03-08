@@ -5,16 +5,17 @@ const Beatmap = @import("../../formats/Beatmap.zig");
 const video = @import("../../../graphic/video.zig");
 const Color = @import("../../../graphic/Color.zig");
 const Replay = @import("../../formats/Replay.zig");
-const Appearance = @import("../../Appearance.zig");
 const Playfield = @import("../../Playfield.zig");
 const Replayer = @import("../../Replayer.zig");
 const Renderer = @import("../../Renderer.zig");
 const Skin = @import("../../formats/Skin.zig");
+const Appearance = @import("./Appearance.zig");
 const judgement = @import("./judgement.zig");
 
 const ManiaReplayer = @This();
 
 allocator: std.mem.Allocator,
+appearance: ?Appearance,
 
 columns: ?u8,
 objects: ?[]Object,
@@ -46,6 +47,7 @@ pub const Object = struct {
 pub fn init(allocator: std.mem.Allocator) !ManiaReplayer {
     return ManiaReplayer{
         .allocator = allocator,
+        .appearance = null, 
 
         .columns = null,
         .objects = null
@@ -155,51 +157,66 @@ pub fn loadSkin(ptr: *anyopaque, skin: *Skin, renderer: *Renderer) !void {
         return error.BeatmapNotLoaded;
     }
 
-    renderer.appearance.clear();
+    renderer.textures.clear();
 
     var field_name_buffer = @as([64]u8, undefined);
     var texture_name_buffer = @as([64]u8, undefined);
 
     for (0..17) |column| {
-        try renderer.appearance.loadTexture(
+//        const flip_note_head = skin.parseField(u1, try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteFlipWhenUpsideDown{}H", .{self.columns.?, column}), 1);
+//        const flip_note_tail = skin.parseField(u1, try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteFlipWhenUpsideDown{}T", .{self.columns.?, column}), 1);
+
+        try renderer.textures.loadTexture(
             try std.fmt.bufPrint(&texture_name_buffer, "mania-note{}", .{column}),
-            try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteImage{}", .{self.columns.?, column}), "mania-note1")),
-            @embedFile("../../assets/default/mania-note1@2x.png")
+            try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteImage{}", .{self.columns.?, column}), if (column % 2 == 0) "mania-note1" else "mania-note2")),
+            if (column % 2 == 0) @embedFile("../../assets/default/mania-note1@2x.png") else @embedFile("../../assets/default/mania-note2@2x.png"),
+            .{}
+        );
+        try renderer.textures.loadTexture(
+            try std.fmt.bufPrint(&texture_name_buffer, "mania-note-hold-head{}", .{column}),
+            try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteImage{}H", .{self.columns.?, column}), if (column % 2 == 0) "mania-note1" else "mania-note2")),
+            if (column % 2 == 0) @embedFile("../../assets/default/mania-note1H@2x.png") else @embedFile("../../assets/default/mania-note2H@2x.png"),
+            .{}
+        );
+        try renderer.textures.loadTexture(
+            try std.fmt.bufPrint(&texture_name_buffer, "mania-note-hold-tail{}", .{column}),
+            try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteImage{}T", .{self.columns.?, column}), if (column % 2 == 0) "mania-note1" else "mania-note2")),
+            if (column % 2 == 0) @embedFile("../../assets/default/mania-note1H@2x.png") else @embedFile("../../assets/default/mania-note2H@2x.png"),
+            .{}
         );
 
-        try renderer.appearance.loadTexture(
+        try renderer.textures.loadTexture(
             try std.fmt.bufPrint(&texture_name_buffer, "mania-key{}", .{column}),
-            try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.KeyImage{}", .{self.columns.?, column}), "mania-key1")),
-            @embedFile("../../assets/default/mania-key1@2x.png")
+            try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.KeyImage{}", .{self.columns.?, column}), if (column % 2 == 0) "mania-key1" else "mania-key2")),
+            if (column % 2 == 0) @embedFile("../../assets/default/mania-key1@2x.png") else @embedFile("../../assets/default/mania-key2@2x.png"),
+            .{}
         );
-
-        try renderer.appearance.loadTexture(
+        try renderer.textures.loadTexture(
             try std.fmt.bufPrint(&texture_name_buffer, "mania-key{}-hold", .{column}),
-            try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.KeyImage{}D", .{self.columns.?, column}), "mania-key1D")),
-            @embedFile("../../assets/default/mania-key1D@2x.png")
+            try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.KeyImage{}D", .{self.columns.?, column}), if (column % 2 == 0) "mania-key1D" else "mania-key2D")),
+            if (column % 2 == 0) @embedFile("../../assets/default/mania-key1D@2x.png") else @embedFile("../../assets/default/mania-key2@2x.png"),
+            .{}
         );
     }
 
-//    try self.playfield.textures.load("mania-note1", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.NoteImage1", .{self.columns.?}), "mania-note1")) orelse @constCast(@embedFile("../../assets/default/mania-note1@2x.png")));
-//    try self.playfield.textures.load("mania-note2", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.NoteImage2", .{self.columns.?}), "mania-note2")) orelse @constCast(@embedFile("../../assets/default/mania-note2@2x.png")));
-//    try self.playfield.textures.load("mania-noteS", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.NoteImageS", .{self.columns.?}), "mania-noteS")) orelse @constCast(@embedFile("../../assets/default/mania-noteS@2x.png")));
-
-//    try self.playfield.textures.load("mania-key1", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.mania-key1", .{self.columns.?}), "mania-key1")) orelse @constCast(@embedFile("../../assets/default/mania-key1@2x.png")));
-//    try self.playfield.textures.load("mania-key1-hold", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.mania-key1", .{self.columns.?}), "mania-key1D")) orelse @constCast(@embedFile("../../assets/default/mania-key1D@2x.png")));
-//    try self.playfield.textures.load("mania-key2", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.mania-key2", .{self.columns.?}), "mania-key2")) orelse @constCast(@embedFile("../../assets/default/mania-key2@2x.png")));
-//    try self.playfield.textures.load("mania-key2-hold", try skin.getImage(skin.getField(try std.fmt.bufPrint(&buffer, "Mania{}K.mania-key2", .{self.columns.?}), "mania-key2D")) orelse @constCast(@embedFile("../../assets/default/mania-key2D@2x.png")));
+    self.appearance = try Appearance.init(skin, self.columns.?);
 }
 
 // Render a frame.
 pub fn render(ptr: *anyopaque, renderer: *Renderer, timestamp: u64) !void {
     const self = @as(*ManiaReplayer, @ptrCast(@alignCast(ptr)));
 
-    if (self.columns == null or self.objects == null) {
+    if (self.columns == null or self.objects == null)
         return error.BeatmapNotLoaded;
-    }
+    if (self.appearance == null)
+        return error.SkinNotLoaded;
 
     var playfield = Playfield.init(&renderer.surface, 640, 480);
     try playfield.clear();
+
+    const appearance = self.appearance.?;
+
+    var texture_name_buffer = @as([64]u8, undefined);
 
     for (self.objects.?) |object| {
         if (object.end == null) {
@@ -209,7 +226,12 @@ pub fn render(ptr: *anyopaque, renderer: *Renderer, timestamp: u64) !void {
                 const y = (@as(i64, @intCast(playfield.height)) - 32) - @divFloor(object.start - @as(i64, @intCast(timestamp)), 2);
 
                 if (y > 0 and y < playfield.height) {
-                    try playfield.drawTexture(try renderer.appearance.getTexture("mania-note1"), object.column * 32, @as(i17, @intCast(y)), 32, null, .BottomLeft, null);
+                    try playfield.drawTexture(
+                        try renderer.textures.getTexture(try std.fmt.bufPrint(&texture_name_buffer, "mania-note{}", .{object.column})),
+                        appearance.columns_x[object.column], @as(i17, @intCast(y)),
+                        appearance.columns_width[object.column], null,
+                        .BottomLeft, null
+                    );
                 }
             }
         } else {
@@ -219,7 +241,36 @@ pub fn render(ptr: *anyopaque, renderer: *Renderer, timestamp: u64) !void {
             const end_y = (@as(i64, @intCast(playfield.height)) - 32) - @divFloor(object.end.? - @as(i64, @intCast(timestamp)), 2);
 
             if (start_y > 0 and end_y < playfield.height and (start_y > end_y)) {
-                try playfield.drawRectangle(Color.init(255, 255, 255, 1), object.column * 32, @as(i17, @intCast(start_y)), 32, @as(u16, @intCast(start_y - end_y)), .BottomLeft, null);
+                // Draw the body of the "hold".
+
+                try playfield.drawRectangle(
+                    Color.init(255, 255, 255, 1),
+                    appearance.columns_x[object.column], @as(i17, @intCast(start_y)),
+                    appearance.columns_width[object.column], @as(u16, @intCast(start_y - end_y)),
+                    .BottomLeft, null
+                );
+            }
+
+            if (end_y > 0 and end_y < start_y) {
+                //Draw the tail of the "hold".
+
+                try playfield.drawTexture(
+                    try renderer.textures.getTexture(try std.fmt.bufPrint(&texture_name_buffer, "mania-note-hold-tail{}", .{object.column})),
+                    appearance.columns_x[object.column], @as(i17, @intCast(end_y)),
+                    appearance.columns_width[object.column], null,
+                    .BottomLeft, null
+                );
+            }
+
+            if (start_y > 0 and end_y < playfield.height and (start_y > end_y)) {
+                // Draw the head of the "hold".
+
+                try playfield.drawTexture(
+                    try renderer.textures.getTexture(try std.fmt.bufPrint(&texture_name_buffer, "mania-note-hold-head{}", .{object.column})),
+                    appearance.columns_x[object.column], @as(i17, @intCast(start_y)),
+                    appearance.columns_width[object.column], null,
+                    .BottomLeft, null
+                );
             }
         }
     }
