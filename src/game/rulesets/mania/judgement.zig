@@ -6,10 +6,10 @@ pub fn judge(columns: u8, objects: []Replayer.Object, replay: *Replay) !void {
     var timestamp = @as(i64, 0);
     var start = @as(u64, 0);
 
-    var previous_columns_bitmap = @as(?u16, null);
+    var previous_key_bitmap = @as(?u16, null);
 
     for (replay.frames) |frame| {
-        const column_bitmap = @as(u16, @intFromFloat(@trunc(frame.x)));
+        const key_bitmap = @as(u16, @intFromFloat(@trunc(frame.x)));
 
         for (0..columns) |column| {
             for (objects[start..]) |*object| {
@@ -18,7 +18,7 @@ pub fn judge(columns: u8, objects: []Replayer.Object, replay: *Replay) !void {
                         // The object is a "note". 
 
                         if (object.press == null) {
-                            if (column_bitmap & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and @abs(timestamp - object.start) <= Timing.meh) {
+                            if (key_bitmap & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and @abs(timestamp - object.start) <= Timing.meh) {
                                 object.press = timestamp;
 
                                 start += 1;
@@ -36,11 +36,11 @@ pub fn judge(columns: u8, objects: []Replayer.Object, replay: *Replay) !void {
                         // The object is a "hold".
 
                         if (object.press == null) {
-                            if (column_bitmap & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and @abs(timestamp - object.start) <= Timing.meh) {
+                            if (key_bitmap & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and @abs(timestamp - object.start) <= Timing.meh) {
                                 object.press = timestamp;
                             }
                         } else if (object.release == null) {
-                            if (previous_columns_bitmap.? & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and column_bitmap & (@as(u32, 1) << @as(u5, @intCast(column))) == 0) {
+                            if (previous_key_bitmap.? & (@as(u32, 1) << @as(u5, @intCast(column))) != 0 and key_bitmap & (@as(u32, 1) << @as(u5, @intCast(column))) == 0) {
                                 if (@abs(timestamp - object.end.?) < Timing.meh) {
                                     object.release = timestamp;
 
@@ -62,7 +62,7 @@ pub fn judge(columns: u8, objects: []Replayer.Object, replay: *Replay) !void {
         }
 
         timestamp += frame.w;
-        previous_columns_bitmap = column_bitmap;
+        previous_key_bitmap = key_bitmap;
     }
 }
 

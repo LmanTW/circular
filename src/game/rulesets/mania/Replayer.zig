@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Surface = @import("../../../graphic/Surface.zig");
+const Texture = @import("../../../graphic/Texture.zig");
 const Beatmap = @import("../../formats/Beatmap.zig");
 const video = @import("../../../graphic/video.zig");
 const Color = @import("../../../graphic/Color.zig");
@@ -19,6 +20,7 @@ appearance: ?Appearance,
 
 columns: ?u8,
 objects: ?[]Object,
+frames: ?[]Frame,
 
 // The vtable.
 pub const VTable = Replayer.VTable{
@@ -43,6 +45,12 @@ pub const Object = struct {
     release: ?i64
 };
 
+// The frame.
+pub const Frame = struct {
+    timestamp: i64,
+    keys: u16
+};
+
 // Initialize a replayer.
 pub fn init(allocator: std.mem.Allocator) !ManiaReplayer {
     return ManiaReplayer{
@@ -50,7 +58,8 @@ pub fn init(allocator: std.mem.Allocator) !ManiaReplayer {
         .appearance = null, 
 
         .columns = null,
-        .objects = null
+        .objects = null,
+        .frames = null
     };
 }
 
@@ -58,9 +67,10 @@ pub fn init(allocator: std.mem.Allocator) !ManiaReplayer {
 pub fn deinit(ptr: *anyopaque) void {
     const self = @as(*ManiaReplayer, @ptrCast(@alignCast(ptr)));
 
-    if (self.objects) |objects| {
+    if (self.objects) |objects|
         self.allocator.free(objects);
-    }
+    if (self.frames) |frames|
+        self.allocator.free(frames);
 }
 
 // Load a difficulty.
@@ -146,6 +156,22 @@ pub fn loadReplay(ptr: *anyopaque, replay: *Replay) !void {
     }
 
     try judgement.judge(self.columns.?, self.objects.?, replay);
+
+    var frames = try self.allocator.alloc(Frame, replay.frames.len);
+    errdefer self.allocator.free(frames);
+
+    var timestamp = @as(i64, 0);
+
+    for (0..replay.frames.len) |index| {
+        timestamp += replay.frames[index].w;
+
+        frames[index] = Frame{
+            .timestamp = timestamp,
+            .keys = @as(u16, @intFromFloat(@trunc(replay.frames[index].x)))
+        };
+    }
+
+    self.frames = frames;
 }
 
 // Load a skin into the texture pool.
@@ -163,8 +189,8 @@ pub fn loadSkin(ptr: *anyopaque, skin: *Skin, renderer: *Renderer) !void {
     var texture_name_buffer = @as([64]u8, undefined);
 
     for (0..17) |column| {
-//        const flip_note_head = skin.parseField(u1, try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteFlipWhenUpsideDown{}H", .{self.columns.?, column}), 1);
-//        const flip_note_tail = skin.parseField(u1, try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteFlipWhenUpsideDown{}T", .{self.columns.?, column}), 1);
+        const flip_note_head = skin.parseField(u1, try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteFlipWhenUpsideDown{}H", .{self.columns.?, column}), 0) == 1;
+        const flip_note_tail = skin.parseField(u1, try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteFlipWhenUpsideDown{}T", .{self.columns.?, column}), 1) == 1;
 
         try renderer.textures.loadTexture(
             try std.fmt.bufPrint(&texture_name_buffer, "mania-note{}", .{column}),
@@ -174,15 +200,15 @@ pub fn loadSkin(ptr: *anyopaque, skin: *Skin, renderer: *Renderer) !void {
         );
         try renderer.textures.loadTexture(
             try std.fmt.bufPrint(&texture_name_buffer, "mania-note-hold-head{}", .{column}),
-            try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteImage{}H", .{self.columns.?, column}), if (column % 2 == 0) "mania-note1" else "mania-note2")),
+            try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteImage{}H", .{self.columns.?, column}), if (column % 2 == 0) "mania-note1H" else "mania-note2H")),
             if (column % 2 == 0) @embedFile("../../assets/default/mania-note1H@2x.png") else @embedFile("../../assets/default/mania-note2H@2x.png"),
-            .{}
+            .{ .flip_vertical = flip_note_head }
         );
         try renderer.textures.loadTexture(
             try std.fmt.bufPrint(&texture_name_buffer, "mania-note-hold-tail{}", .{column}),
-            try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteImage{}T", .{self.columns.?, column}), if (column % 2 == 0) "mania-note1" else "mania-note2")),
+            try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.NoteImage{}T", .{self.columns.?, column}), if (column % 2 == 0) "mania-note1H" else "mania-note2H")),
             if (column % 2 == 0) @embedFile("../../assets/default/mania-note1H@2x.png") else @embedFile("../../assets/default/mania-note2H@2x.png"),
-            .{}
+            .{ .flip_vertical = flip_note_tail }
         );
 
         try renderer.textures.loadTexture(
@@ -192,7 +218,7 @@ pub fn loadSkin(ptr: *anyopaque, skin: *Skin, renderer: *Renderer) !void {
             .{}
         );
         try renderer.textures.loadTexture(
-            try std.fmt.bufPrint(&texture_name_buffer, "mania-key{}-hold", .{column}),
+            try std.fmt.bufPrint(&texture_name_buffer, "mania-key{}-pressed", .{column}),
             try skin.getImage(skin.getField(try std.fmt.bufPrint(&field_name_buffer, "Mania{}K.KeyImage{}D", .{self.columns.?, column}), if (column % 2 == 0) "mania-key1D" else "mania-key2D")),
             if (column % 2 == 0) @embedFile("../../assets/default/mania-key1D@2x.png") else @embedFile("../../assets/default/mania-key2@2x.png"),
             .{}
@@ -208,6 +234,8 @@ pub fn render(ptr: *anyopaque, renderer: *Renderer, timestamp: u64) !void {
 
     if (self.columns == null or self.objects == null)
         return error.BeatmapNotLoaded;
+    if (self.frames == null)
+        return error.ReplayNotLoaded;
     if (self.appearance == null)
         return error.SkinNotLoaded;
 
@@ -218,12 +246,35 @@ pub fn render(ptr: *anyopaque, renderer: *Renderer, timestamp: u64) !void {
 
     var texture_name_buffer = @as([64]u8, undefined);
 
+    for (self.frames.?) |frame| {
+        if (frame.timestamp >= timestamp) {
+            for (0..self.columns.?) |column| {
+                var texture = @as(Texture, undefined);
+
+                if (frame.keys & (@as(u32, 1) << @as(u5, @intCast(column))) == 0) {
+                    texture = try renderer.textures.getTexture(try std.fmt.bufPrint(&texture_name_buffer, "mania-key{}", .{column}));
+                } else {
+                    texture = try renderer.textures.getTexture(try std.fmt.bufPrint(&texture_name_buffer, "mania-key{}-pressed", .{column}));
+                }
+
+                try playfield.drawTexture(
+                    texture,
+                    appearance.columns_x[column], @as(i17, @intCast(playfield.height)),
+                    appearance.columns_width[column], null,
+                    .BottomLeft, null
+                );
+            }
+
+            break;
+        }
+    }
+
     for (self.objects.?) |object| {
         if (object.end == null) {
             // The object is a "note".
 
             if (timestamp < object.press orelse object.start) {
-                const y = (@as(i64, @intCast(playfield.height)) - 32) - @divFloor(object.start - @as(i64, @intCast(timestamp)), 2);
+                const y = appearance.hit_position - @divFloor(object.start - @as(i64, @intCast(timestamp)), 2);
 
                 if (y > 0 and y < playfield.height) {
                     try playfield.drawTexture(
@@ -237,8 +288,8 @@ pub fn render(ptr: *anyopaque, renderer: *Renderer, timestamp: u64) !void {
         } else {
             // The object is a "hold".
 
-            const start_y = (@as(i64, @intCast(playfield.height)) - 32) - if (object.press != null and timestamp > object.press.?) 0 else @divFloor(object.start - @as(i64, @intCast(timestamp)), 2);
-            const end_y = (@as(i64, @intCast(playfield.height)) - 32) - @divFloor(object.end.? - @as(i64, @intCast(timestamp)), 2);
+            const start_y = appearance.hit_position - if (object.press != null and timestamp > object.press.?) 0 else @divFloor(object.start - @as(i64, @intCast(timestamp)), 2);
+            const end_y = appearance.hit_position - @divFloor(object.end.? - @as(i64, @intCast(timestamp)), 2);
 
             if (start_y > 0 and end_y < playfield.height and (start_y > end_y)) {
                 // Draw the body of the "hold".

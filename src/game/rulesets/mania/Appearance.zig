@@ -8,6 +8,7 @@ const Appearance = @This();
 
 columns_x: [18]u16,
 columns_width: [18]u16,
+hit_position: u16,
 
 // Initialize an appearance.
 pub fn init(skin: *Skin, columns: u8) !Appearance {
@@ -27,6 +28,7 @@ pub fn init(skin: *Skin, columns: u8) !Appearance {
 
     return Appearance{
         .columns_x = columns_x,
-        .columns_width = column_width
+        .columns_width = column_width,
+        .hit_position = skin.parseField(u16, try std.fmt.bufPrint(&name_buffer, "Mania{}K.HitPosition", .{columns}), 402)
     };
 }

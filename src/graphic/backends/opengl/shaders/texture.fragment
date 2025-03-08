@@ -4,7 +4,20 @@ in vec2 TexCoord;
 out vec4 FragColor;
 
 uniform sampler2D textureSampler;
+uniform bool flipHorizontal;
+uniform bool flipVertical;
 
 void main() {
-  FragColor = texture(textureSampler, TexCoord);
+  float x = TexCoord.x;
+  float y = TexCoord.y;
+
+  if (flipHorizontal) {
+    x = 1 - x;
+  }
+
+  if (flipVertical) {
+    y = 1 - y;
+  }
+
+  FragColor = texture(textureSampler, vec2(x, y));
 }

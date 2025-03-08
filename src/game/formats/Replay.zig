@@ -170,6 +170,17 @@ pub fn deinit(self: *Replay) void {
     self.allocator.free(self.frames);
 }
 
+// Get the length of the replay.
+pub fn getLength(self: *Replay) u64 {
+    var length = @as(i64, 0);
+
+    while (self.frames) |frame| {
+        length += frame.w;
+    }
+
+    return @as(u64, @intCast(length));
+}
+
 // The replay reader.
 pub const Reader = struct {
     allocator: std.mem.Allocator,

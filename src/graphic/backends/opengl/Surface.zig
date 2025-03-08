@@ -190,13 +190,16 @@ pub fn drawTexture(ptr: *anyopaque, texture: Texture, x: i17, y: i17, width: u16
         end_x,   end_y,   1.0, 1.0,
     });
 
+    const managed_texture = @as(*OpenGLTexture, @ptrCast(@alignCast(texture.unmanaged)));
+
     gl.viewport(0, 0, @as(gl.Sizei, @intCast(self.width)), @as(gl.Sizei, @intCast(self.height)));
     gl.bindFramebuffer(gl.FRAMEBUFFER, self.buffer);
     gl.bindVertexArray(self.vertex_array);
     gl.useProgram(context.texture_program);
-    gl.uniform1i(gl.getUniformLocation(context.texture_program, "textureSampler"), 0);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, @as(*OpenGLTexture, @ptrCast(@alignCast(texture.unmanaged))).texture);
+    gl.bindTexture(gl.TEXTURE_2D, managed_texture.texture);
+    gl.uniform1i(gl.getUniformLocation(context.texture_program, "flipHorizontal"), @intFromBool(managed_texture.style.flip_horizontal));
+    gl.uniform1i(gl.getUniformLocation(context.texture_program, "flipVertical"), @intFromBool(managed_texture.style.flip_vertical));
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
 
