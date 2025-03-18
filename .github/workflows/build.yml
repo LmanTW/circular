@@ -1,0 +1,21 @@
+name: Build the Project
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build the Project
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.14.0
+
+      - name: Build the Project
+        run: zig build

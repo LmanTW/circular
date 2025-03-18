@@ -31,25 +31,25 @@ pub fn main() !void {
         application.interface.log(.Running, "Loading the replay...", .{});
 
         var replay = try application.loadReplay(application.interface.getArgument(0));
-        defer replay.deinit();
+        errdefer replay.deinit();
 
         application.interface.log(.Complete, "Successfully loaded the replay!", .{});
         application.interface.log(.Running, "Loading the beatmap...", .{});
 
         var beatmap = try application.loadBeatmap(&replay);
-        defer beatmap.deinit();
+        errdefer beatmap.deinit();
 
         application.interface.log(.Complete, "Successfully loaded the beatmap!", .{});
         application.interface.log(.Running, "Loading the difficulty...", .{});
 
         var difficulty = try application.loadDifficulty(&beatmap, replay.beatmap_hash);
-        defer difficulty.deinit();
+        errdefer difficulty.deinit();
 
         application.interface.log(.Complete, "Successfully loaded the difficulty!", .{});
         application.interface.log(.Running, "Loading the skin...", .{});
 
         var skin = try application.loadSkin(application.options.skin);
-        defer skin.deinit();
+        errdefer skin.deinit();
 
         application.interface.log(.Complete, "Successfully loaded the skin!", .{});
         application.interface.log(.Running, "Initializing the renderer...", .{});
@@ -73,6 +73,9 @@ pub fn main() !void {
         try replayer.loadReplay(&replay);
         try replayer.loadSkin(&skin, &renderer);
 
+        replay.deinit(); 
+        skin.deinit();
+
         application.interface.log(.Complete, "Successfully initialized the replayer!", .{});
         application.interface.blank();
 
@@ -91,6 +94,19 @@ pub fn main() !void {
 
             std.debug.print("Frame: {}\n", .{frame});
         }
+
+        const filename = difficulty.getField("General.AudioFilename", "audio.mp3");
+
+        var audio_writer = try video.AudioWriter.init(application.options.output, 0, .{
+            .ffmpeg = application.options.output
+        }, allocator);
+        defer audio_writer.deinit();
+
+        try audio_writer.write(beatmap.getResource(filename).?);
+        try audio_writer.finalize();
+
+        difficulty.deinit();
+        beatmap.deinit();
 
         std.debug.print("Time: {}ms\n", .{std.time.milliTimestamp() - start});
     } else {
@@ -315,7 +331,7 @@ const Application = struct {
             self.interface.log(.Error, "Failed to start the ffmpeg: \"{s}\"", .{self.options.ffmpeg});
             self.interface.blank();
 
-            std.process.exit(1);            
+            std.process.exit(1);
         };
     }
 

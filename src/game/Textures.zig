@@ -38,7 +38,7 @@ pub fn clear(self: *Textures) void {
 
     while (texture_iterator.next()) |entry| {
          self.allocator.free(entry.key_ptr.*);
-         entry.value_ptr.*.deinit();
+         entry.value_ptr.deinit();
     }
 
     while (animation_iterator.next()) |entry| {
@@ -47,7 +47,7 @@ pub fn clear(self: *Textures) void {
 }
 
 // Load a texture.
-// > [name, data, default] are no longer required after loaded.
+// > [data, default] are no longer required after loaded.
 pub fn loadTexture(self: *Textures, name: []const u8, data: ?[]u8, default: []const u8, style: Texture.Style) !void {
     if (self.textures.contains(name)) {
         const entry = self.textures.fetchRemove(name).?;

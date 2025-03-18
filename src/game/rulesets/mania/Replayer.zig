@@ -102,7 +102,7 @@ pub fn loadDifficulty(ptr: *anyopaque, difficulty: *Beatmap.Difficulty) !void {
 
         if (x == null or y == null or time == null or kind == null or sound == null) {
             return error.IncompleteObject;
-        } 
+        }
 
         switch (try std.fmt.parseInt(u8, kind.?, 10)) {
             1 => {
@@ -246,6 +246,7 @@ pub fn render(ptr: *anyopaque, renderer: *Renderer, timestamp: u64) !void {
 
     var texture_name_buffer = @as([64]u8, undefined);
 
+    // Draw the keys.
     for (self.frames.?) |frame| {
         if (frame.timestamp >= timestamp) {
             for (0..self.columns.?) |column| {
@@ -258,9 +259,9 @@ pub fn render(ptr: *anyopaque, renderer: *Renderer, timestamp: u64) !void {
                 }
 
                 try playfield.drawTexture(
-                    texture,
-                    appearance.columns_x[column], @as(i17, @intCast(playfield.height)),
-                    appearance.columns_width[column], null,
+                   texture, 
+                    appearance.column_x[column], @as(i17, @intCast(playfield.height)),
+                    appearance.column_width[column], null,
                     .BottomLeft, null
                 );
             }
@@ -279,8 +280,8 @@ pub fn render(ptr: *anyopaque, renderer: *Renderer, timestamp: u64) !void {
                 if (y > 0 and y < playfield.height) {
                     try playfield.drawTexture(
                         try renderer.textures.getTexture(try std.fmt.bufPrint(&texture_name_buffer, "mania-note{}", .{object.column})),
-                        appearance.columns_x[object.column], @as(i17, @intCast(y)),
-                        appearance.columns_width[object.column], null,
+                        appearance.column_x[object.column], @as(i17, @intCast(y)),
+                        appearance.column_width[object.column], null,
                         .BottomLeft, null
                     );
                 }
@@ -296,8 +297,8 @@ pub fn render(ptr: *anyopaque, renderer: *Renderer, timestamp: u64) !void {
 
                 try playfield.drawRectangle(
                     Color.init(255, 255, 255, 1),
-                    appearance.columns_x[object.column], @as(i17, @intCast(start_y)),
-                    appearance.columns_width[object.column], @as(u16, @intCast(start_y - end_y)),
+                    appearance.column_x[object.column], @as(i17, @intCast(start_y)),
+                    appearance.column_width[object.column], @as(u16, @intCast(start_y - end_y)),
                     .BottomLeft, null
                 );
             }
@@ -307,8 +308,8 @@ pub fn render(ptr: *anyopaque, renderer: *Renderer, timestamp: u64) !void {
 
                 try playfield.drawTexture(
                     try renderer.textures.getTexture(try std.fmt.bufPrint(&texture_name_buffer, "mania-note-hold-tail{}", .{object.column})),
-                    appearance.columns_x[object.column], @as(i17, @intCast(end_y)),
-                    appearance.columns_width[object.column], null,
+                    appearance.column_x[object.column], @as(i17, @intCast(end_y)),
+                    appearance.column_width[object.column], null,
                     .BottomLeft, null
                 );
             }
@@ -318,8 +319,8 @@ pub fn render(ptr: *anyopaque, renderer: *Renderer, timestamp: u64) !void {
 
                 try playfield.drawTexture(
                     try renderer.textures.getTexture(try std.fmt.bufPrint(&texture_name_buffer, "mania-note-hold-head{}", .{object.column})),
-                    appearance.columns_x[object.column], @as(i17, @intCast(start_y)),
-                    appearance.columns_width[object.column], null,
+                    appearance.column_x[object.column], @as(i17, @intCast(start_y)),
+                    appearance.column_width[object.column], null,
                     .BottomLeft, null
                 );
             }

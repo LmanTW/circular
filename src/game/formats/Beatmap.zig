@@ -130,6 +130,11 @@ pub fn findDifficulty(self: *Beatmap, hash: []const u8) ?[]const u8 {
     return null;
 }
 
+// Get a resource.
+pub fn getResource(self: *Beatmap, filename: []const u8) ?[]u8 {
+    return self.resources.get(filename);
+}
+
 // The difficulty.
 pub const Difficulty = struct {
     allocator: std.mem.Allocator,
