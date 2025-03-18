@@ -1,15 +1,15 @@
-name: Build the Project
+name: Release
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Build the Project
+  release:
+    name: Release the Project
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout the repository
+      - name: Checkout the Repository
         uses: actions/checkout@v4
 
       - name: Install Zig
